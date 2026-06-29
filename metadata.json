@@ -1,0 +1,6 @@
+{
+  "name": "PIO-TECH Support Portal",
+  "description": "A modern, secure, and multi-tenant support portal for tracking support tickets, managing user roles, and streamlining customer assistance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,232 @@
+{
+  "ai_chat_messages": [
+    "created_at: string | null",
+    "id: string",
+    "message: string | null",
+    "sender: string | null",
+    "session_id: string | null"
+  ],
+  "ai_diagnostic_categories": [
+    "category_name: string | null",
+    "display_order: number | null",
+    "id: string",
+    "product_id: string | null"
+  ],
+  "ai_diagnostic_questions": [
+    "category_id: string | null",
+    "display_order: number | null",
+    "id: string",
+    "question_text: string | null",
+    "question_type: string | null",
+    "variable_name: string | null"
+  ],
+  "ai_knowledge_articles": [
+    "article_title: string | null",
+    "created_at: string | null",
+    "id: string",
+    "keywords: string | null",
+    "product_code: string | null",
+    "resolution: string | null",
+    "root_cause: string | null",
+    "symptoms: string | null"
+  ],
+  "ai_products": [
+    "id: string",
+    "product_code: string | null",
+    "product_name: string | null"
+  ],
+  "ai_question_options": [
+    "display_order: number | null",
+    "id: string",
+    "option_label: string | null",
+    "option_value: string | null",
+    "question_id: string | null"
+  ],
+  "ai_question_templates": [
+    "component_name: string | null",
+    "created_at: string | null",
+    "id: string",
+    "is_required: boolean | null",
+    "product_code: string",
+    "question_order: number",
+    "question_text: string",
+    "symptom_name: string | null"
+  ],
+  "ai_recommendations": [
+    "component_name: string | null",
+    "confidence_score: number | null",
+    "created_at: string | null",
+    "id: string",
+    "product_code: string | null",
+    "recommendation_text: string",
+    "symptom_name: string | null",
+    "ticket_id: string"
+  ],
+  "ai_symptoms": [
+    "active: boolean | null",
+    "component_name: string | null",
+    "created_at: string | null",
+    "id: string",
+    "product_code: string | null",
+    "symptom_name: string | null"
+  ],
+  "audit_log": [
+    "action_type: string | null",
+    "changed_at: string | null",
+    "changed_by: string | null",
+    "id: string",
+    "new_value: Json | null",
+    "old_value: Json | null",
+    "record_id: string | null",
+    "table_name: string | null"
+  ],
+  "customer_contacts": [
+    "created_at: string | null",
+    "customer_id: string",
+    "email: string | null",
+    "full_name: string",
+    "id: string",
+    "is_primary: boolean | null",
+    "job_title: string | null",
+    "mobile: string | null"
+  ],
+  "customer_products": [
+    "active: boolean | null",
+    "created_at: string | null",
+    "customer_id: string",
+    "id: string",
+    "product_id: string"
+  ],
+  "customers": [
+    "created_at: string | null",
+    "customer_code: string",
+    "customer_name: string",
+    "id: string",
+    "status: string",
+    "updated_at: string | null"
+  ],
+  "knowledge_articles": [
+    "created_at: string | null",
+    "id: string",
+    "keywords: string | null",
+    "product_code: string",
+    "resolution: string | null",
+    "root_cause: string | null",
+    "symptoms: string | null",
+    "title: string"
+  ],
+  "organization_products": [
+    "created_at: string | null",
+    "id: string",
+    "is_active: boolean",
+    "organization_id: string",
+    "product_code: string"
+  ],
+  "priorities": [
+    "id: string",
+    "priority_code: string",
+    "priority_name: string",
+    "sort_order: number"
+  ],
+  "products": [
+    "created_at: string | null",
+    "id: string",
+    "is_active: boolean | null",
+    "product_code: string",
+    "product_name: string",
+    "team_id: string | null"
+  ],
+  "roles": [
+    "created_at: string | null",
+    "description: string | null",
+    "id: string",
+    "role_code: string",
+    "role_name: string"
+  ],
+  "team_members": [
+    "created_at: string | null",
+    "id: string",
+    "team_id: string",
+    "user_id: string"
+  ],
+  "teams": [
+    "created_at: string | null",
+    "description: string | null",
+    "id: string",
+    "team_code: string",
+    "team_name: string"
+  ],
+  "ticket_attachments": [
+    "file_name: string | null",
+    "file_path: string | null",
+    "id: string",
+    "ticket_id: string",
+    "uploaded_at: string | null",
+    "uploaded_by: string | null"
+  ],
+  "ticket_comments": [
+    "comment_by: string",
+    "comment_text: string",
+    "comment_type: string",
+    "created_at: string | null",
+    "id: string",
+    "ticket_id: string"
+  ],
+  "ticket_internal_notes": [
+    "created_at: string | null",
+    "created_by: string",
+    "id: string",
+    "note_text: string",
+    "ticket_id: string"
+  ],
+  "ticket_status_history": [
+    "change_notes: string | null",
+    "changed_at: string | null",
+    "changed_by: string | null",
+    "id: string",
+    "new_status_id: string | null",
+    "old_status_id: string | null",
+    "ticket_id: string"
+  ],
+  "ticket_statuses": [
+    "created_at: string | null",
+    "id: string",
+    "sort_order: number",
+    "status_code: string",
+    "status_name: string"
+  ],
+  "tickets": [
+    "ai_confidence: number | null",
+    "ai_recommendation: string | null",
+    "ai_root_cause: string | null",
+    "ai_summary: string | null",
+    "assigned_team_id: string | null",
+    "assigned_user_id: string | null",
+    "business_impact: string | null",
+    "created_at: string | null",
+    "created_by: string",
+    "customer_id: string",
+    "description: string",
+    "environment: string | null",
+    "id: string",
+    "priority_id: string",
+    "product_id: string",
+    "status_id: string",
+    "subject: string",
+    "ticket_no: string",
+    "updated_at: string | null"
+  ],
+  "users": [
+    "active: boolean | null",
+    "created_at: string | null",
+    "customer_id: string | null",
+    "email: string | null",
+    "full_name: string | null",
+    "id: string",
+    "is_active: boolean | null",
+    "last_activity: string | null",
+    "last_login: string | null",
+    "role_id: string | null",
+    "team_id: string | null"
+  ]
+}
