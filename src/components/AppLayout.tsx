@@ -10,45 +10,52 @@ import {
   Users, 
   LogOut, 
   Database, 
-  Building2, 
-  Menu, 
-  X, 
-  Shield, 
-  CheckCircle,
   HelpCircle,
-  BarChart3
+  BarChart3,
+  CheckCircle,
+  Bell,
+  ChevronLeft,
+  ChevronRight,
+  Settings2,
+  Brain,
+  TableProperties,
+  ChevronDown
 } from 'lucide-react';
 
 interface AppLayoutProps {
   children: React.ReactNode;
 }
 
+const getBreadcrumbTitle = (pathname: string) => {
+  const path = pathname.replace(/^\//, ''); // remove leading slash
+  
+  if (path.startsWith('tickets/') && path.split('/').length > 1) {
+    const id = path.split('/')[1];
+    if (id.length >= 8) {
+      return `Tickets / TK-${id.slice(0, 8).toUpperCase()}`;
+    }
+  }
+  
+  return path || 'Dashboard';
+};
+
 export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const { user, signOut, dbMode } = useAuth();
   const { currentTenant } = useTenant();
   const navigate = useNavigate();
   const location = useLocation();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  console.log("6. AppLayout render user:", { role: user?.role, role_name: user?.role_name, fullObject: user });
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [isAdminConfigExpanded, setIsAdminConfigExpanded] = useState(false);
 
   const handleSignOut = async () => {
     await signOut();
     navigate('/login');
   };
 
-  const handleToggleDbMode = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value;
-    forceLocalMode(value === 'local');
-  };
-
   const navigationItems = [
-    { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, roles: ['client', 'cab_user', 'agent', 'admin', 'administrator', 'BANK_USER', 'SUPPORT_OFFICER', 'SUPPORT_MANAGER', 'CEO'] },
-    { name: 'Support Tickets', path: '/tickets', icon: TicketCheck, roles: ['client', 'cab_user', 'agent', 'admin', 'administrator', 'BANK_USER', 'SUPPORT_OFFICER', 'SUPPORT_MANAGER', 'CEO'] },
-    { name: 'Resolution Approvals', path: '/resolution-approvals', icon: CheckCircle, roles: ['agent', 'admin', 'administrator', 'SUPPORT_OFFICER', 'SUPPORT_MANAGER', 'CEO'] },
-    { name: 'Analytics Dashboard', path: '/admin/analytics', icon: BarChart3, roles: ['admin', 'administrator', 'SUPPORT_MANAGER', 'CEO'] },
-    { name: 'System Admin', path: '/admin', icon: Settings, roles: ['admin', 'administrator', 'SUPPORT_MANAGER', 'CEO'] },
-    { name: 'Users', path: '/users', icon: Users, roles: ['admin', 'administrator', 'SUPPORT_MANAGER', 'CEO', 'SUPPORT_OFFICER'] },
+    { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, roles: ['client', 'cab_user', 'agent', 'BANK_USER', 'SUPPORT_OFFICER', 'SUPPORT_ENGINEER', 'TEAM_LEAD'] },
+    { name: 'Support Tickets', path: '/tickets', icon: TicketCheck, roles: ['client', 'cab_user', 'agent', 'BANK_USER', 'SUPPORT_OFFICER', 'SUPPORT_ENGINEER', 'TEAM_LEAD'] },
+    { name: 'Users', path: '/users', icon: Users, roles: ['SUPPORT_OFFICER'] },
   ];
 
   const allowedNavigation = navigationItems.filter(item => {
@@ -57,166 +64,205 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     return item.roles.some(r => r.toUpperCase() === roleUpper);
   });
 
+  const isAdmin = user?.role_name && ['ADMIN', 'ADMINISTRATOR', 'SUPPORT_MANAGER', 'CEO'].includes(user.role_name.toUpperCase());
+
+  const adminNavItems = [
+    { name: 'Support Tickets', path: '/tickets', icon: TicketCheck },
+    { name: 'Overview', path: '/admin/overview', icon: LayoutDashboard },
+    { name: 'Report Builder', path: '/admin/reports', icon: TableProperties },
+  ];
+
+  const adminConfigItems = [
+    { name: 'Diagnostic Builder', path: '/diagnostic-builder', icon: Settings2 },
+    { name: 'Recommendation Rules', path: '/recommendation-rules', icon: Brain },
+    { name: 'Banks Management', path: '/admin', icon: Settings },
+    { name: 'Users', path: '/users', icon: Users },
+  ];
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col md:flex-row font-sans">
-      {/* Mobile Header */}
-      <header className="md:hidden bg-slate-900 text-white p-4 flex justify-between items-center shadow-md">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded bg-teal-500 flex items-center justify-center font-bold text-slate-900 tracking-wider">
+    <div className="min-h-screen bg-slate-50 text-slate-800 flex font-sans">
+      
+      <aside 
+        className="sticky top-0 h-screen overflow-y-auto bg-[#1a1f2e] flex flex-col py-4 border-r border-[#1a1f2e] shrink-0 z-40 custom-scrollbar"
+        style={{ 
+          width: isExpanded ? '220px' : '52px',
+          transition: 'width 200ms ease-in-out'
+        }}
+      >
+        
+        {/* Logo area */}
+        <div className={`flex items-center mb-8 px-2 ${isExpanded ? 'px-4' : 'justify-center'}`}>
+          <div className="w-8 h-8 rounded bg-[#f97316] flex items-center justify-center font-bold text-white tracking-wider cursor-pointer shrink-0 shadow-sm">
             PT
           </div>
-          <span className="font-semibold tracking-tight text-lg">PIO-TECH Support</span>
+          <span className={`font-bold text-white whitespace-nowrap transition-all duration-200 ${isExpanded ? 'opacity-100 ml-3 w-auto' : 'opacity-0 w-0 overflow-hidden ml-0'}`}>
+            PioTech
+          </span>
         </div>
-        <button 
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="p-1 hover:bg-slate-800 rounded transition"
-          aria-label="Toggle menu"
-        >
-          {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
-      </header>
 
-      {/* Sidebar (Desktop & Collapsible Mobile) */}
-      <aside className={`
-        fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-slate-300 flex flex-col justify-between shadow-2xl transition-transform duration-300 ease-in-out
-        md:translate-x-0 md:static md:shadow-none
-        ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
-      `}>
-        <div>
-          {/* Logo Brand Bar */}
-          <div className="p-6 border-b border-slate-800 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded bg-teal-400 flex items-center justify-center font-extrabold text-slate-900 text-lg shadow-md shadow-teal-500/10">
-                PT
-              </div>
-              <div>
-                <h1 className="font-bold text-white tracking-tight leading-none text-base">PIO-TECH</h1>
-                <span className="text-[10px] text-teal-400 font-semibold uppercase tracking-widest mt-1 block">Support Portal</span>
-              </div>
-            </div>
-            <button 
-              onClick={() => setMobileMenuOpen(false)}
-              className="md:hidden p-1 text-slate-400 hover:text-white rounded"
-            >
-              <X size={20} />
-            </button>
-          </div>
-
-          {/* Current Tenant Badge (if client/cab_user/BANK_USER) */}
-          {(user?.role_name?.toUpperCase() === 'CLIENT' || user?.role_name?.toUpperCase() === 'CAB_USER' || user?.role_name?.toUpperCase() === 'BANK_USER') && currentTenant && (
-            <div className="mx-4 my-4 p-3 bg-slate-800/60 rounded-lg border border-slate-700/60 flex items-center gap-2">
-              <span className="text-xl">{currentTenant.logo_url || '🏢'}</span>
-              <div className="truncate">
-                <p className="text-xs text-slate-400 font-medium font-mono">ORGANIZATION</p>
-                <p className="text-sm font-semibold text-white truncate">{currentTenant.name}</p>
-              </div>
-            </div>
-          )}
-
-          {/* User Profile Summary */}
-          <div className="px-4 py-4 border-b border-slate-800 flex items-center gap-3">
-            <img 
-              src={(user?.avatar_url && !user.avatar_url.includes('unsplash.com')) ? user.avatar_url : `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.full_name || user?.email || 'User')}&background=0D8B95&color=fff&bold=true`} 
-              alt={user?.full_name} 
-              className="w-10 h-10 rounded-full object-cover border border-slate-700"
-            />
-            <div className="min-w-0 flex-1">
-              <h2 className="text-sm font-semibold text-white truncate">{user?.full_name}</h2>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider leading-none text-slate-900 bg-teal-400`}>
-                  {user?.role_name}
+        {/* Vertical Icons */}
+        <nav className={`flex-1 flex flex-col gap-2 w-full px-1.5 ${!isExpanded && 'items-center'}`}>
+          {!isAdmin && allowedNavigation.map((item) => {
+            const Icon = item.icon;
+            const isActive = location.pathname.startsWith(item.path);
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                title={!isExpanded ? item.name : undefined}
+                className={`
+                  flex items-center rounded-lg transition-colors overflow-hidden
+                  ${isExpanded ? 'w-full px-3 py-2.5 h-10' : 'w-10 h-10 justify-center shrink-0'}
+                  ${isActive 
+                    ? 'bg-[#2d3548] text-white' 
+                    : 'text-[#8892a4] hover:text-[#cdd3e0] hover:bg-slate-800/50'}
+                `}
+              >
+                <Icon size={20} strokeWidth={isActive ? 2.5 : 2} className="shrink-0" />
+                <span className={`whitespace-nowrap font-medium text-[14px] transition-all duration-200 ${isExpanded ? 'opacity-100 ml-3' : 'opacity-0 w-0 overflow-hidden ml-0'}`}>
+                  {item.name}
                 </span>
-                {(user?.role_name?.toUpperCase() === 'ADMIN' || user?.role_name?.toUpperCase() === 'ADMINISTRATOR' || user?.role_name?.toUpperCase() === 'SYS_ADMIN' || user?.role_name?.toUpperCase() === 'CEO' || user?.role_name?.toUpperCase() === 'SUPPORT_MANAGER') && <Shield size={12} className="text-teal-400" />}
-              </div>
-            </div>
-          </div>
+              </Link>
+            );
+          })}
 
-          {/* Navigation links */}
-          <nav className="p-4 space-y-1">
-            {allowedNavigation.map((item) => {
-              const Icon = item.icon;
-              const isActive = location.pathname === item.path;
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`
-                    flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition duration-200
-                    ${isActive 
-                      ? 'bg-teal-500 text-slate-900 font-semibold' 
-                      : 'text-slate-400 hover:bg-slate-800 hover:text-white'}
+          {isAdmin && (
+            <>
+              {adminNavItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = location.pathname.startsWith(item.path);
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    title={!isExpanded ? item.name : undefined}
+                    className={`
+                      flex items-center rounded-lg transition-colors overflow-hidden
+                      ${isExpanded ? 'w-full px-3 py-2.5 h-10' : 'w-10 h-10 justify-center shrink-0'}
+                      ${isActive 
+                        ? 'bg-[#2d3548] text-white' 
+                        : 'text-[#8892a4] hover:text-[#cdd3e0] hover:bg-slate-800/50'}
+                    `}
+                  >
+                    <Icon size={20} strokeWidth={isActive ? 2.5 : 2} className="shrink-0" />
+                    <span className={`whitespace-nowrap font-medium text-[14px] transition-all duration-200 ${isExpanded ? 'opacity-100 ml-3' : 'opacity-0 w-0 overflow-hidden ml-0'}`}>
+                      {item.name}
+                    </span>
+                  </Link>
+                );
+              })}
+
+              <div className={`mt-2 mb-2 w-full flex flex-col ${!isExpanded ? 'items-center' : ''}`}>
+                <button 
+                  onClick={() => setIsAdminConfigExpanded(!isAdminConfigExpanded)}
+                  title={!isExpanded ? "Configuration & Administration" : undefined}
+                  className={`flex items-center justify-between rounded-lg transition-colors overflow-hidden
+                    ${isExpanded ? 'w-full px-3 py-2.5 h-10' : 'w-10 h-10 justify-center shrink-0 hidden'}
+                    text-[#8892a4] hover:text-[#cdd3e0] hover:bg-slate-800/50
                   `}
                 >
-                  <Icon size={18} />
-                  {item.name}
-                </Link>
-              );
-            })}
-          </nav>
-        </div>
+                  <span className={`whitespace-nowrap font-bold text-[11px] tracking-wider transition-all duration-200 ${isExpanded ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'}`}>
+                    CONFIGURATION
+                  </span>
+                  {isExpanded && <ChevronDown size={14} className={`transform transition-transform ${isAdminConfigExpanded ? 'rotate-180' : ''}`} />}
+                </button>
+                
+                {(isAdminConfigExpanded || !isExpanded) && (
+                  <div className={`flex flex-col gap-2 w-full ${isExpanded ? 'mt-1' : ''} ${!isExpanded ? 'items-center' : ''}`}>
+                    {adminConfigItems.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = location.pathname.startsWith(item.path);
+                      return (
+                        <Link
+                          key={item.path}
+                          to={item.path}
+                          title={!isExpanded ? item.name : undefined}
+                          className={`
+                            flex items-center rounded-lg transition-colors overflow-hidden
+                            ${isExpanded ? 'w-full px-3 py-2.5 h-10' : 'w-10 h-10 justify-center shrink-0'}
+                            ${isActive 
+                              ? 'bg-[#2d3548] text-white' 
+                              : 'text-[#8892a4] hover:text-[#cdd3e0] hover:bg-slate-800/50'}
+                          `}
+                        >
+                          <Icon size={20} strokeWidth={isActive ? 2.5 : 2} className="shrink-0" />
+                          <span className={`whitespace-nowrap font-medium text-[14px] transition-all duration-200 ${isExpanded ? 'opacity-100 ml-3' : 'opacity-0 w-0 overflow-hidden ml-0'}`}>
+                            {item.name}
+                          </span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </nav>
 
-        {/* Database Toggle & Sign Out Footer */}
-        <div className="p-4 border-t border-slate-800 space-y-4">
-          {/* DB Control Engine */}
-          <div className="bg-slate-800/50 p-3 rounded-lg border border-slate-700/50">
-            <label className="text-[10px] uppercase font-bold tracking-wider text-slate-400 flex items-center gap-1.5 mb-1.5">
-              <Database size={11} className="text-teal-400" />
-              DB Engine Module
-            </label>
-            <select
-              value={dbMode}
-              onChange={handleToggleDbMode}
-              className="w-full bg-slate-950 text-slate-200 text-xs rounded border border-slate-700 p-1.5 focus:outline-none focus:ring-1 focus:ring-teal-400"
-            >
-              <option value="supabase">Supabase Server (Cloud)</option>
-              <option value="local">Stateful Local DB (Mock)</option>
-            </select>
-            <div className="mt-1.5 flex items-center gap-1 text-[10px] text-slate-500 font-mono">
-              <span className={`w-1.5 h-1.5 rounded-full ${dbMode === 'supabase' ? 'bg-teal-400 animate-pulse' : 'bg-amber-400'}`} />
-              Running in {dbMode === 'supabase' ? 'Cloud database' : 'Local Sandbox'}
-            </div>
-          </div>
-
-          {/* Sign Out Button */}
+        {/* Bottom Icons (Logout, Collapse) */}
+        <div className={`flex flex-col gap-2 w-full mt-auto px-1.5 ${!isExpanded && 'items-center'}`}>
           <button
             onClick={handleSignOut}
-            className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-slate-400 hover:bg-red-950/40 hover:text-red-400 transition duration-200 text-sm font-medium"
+            title={!isExpanded ? "Sign Out" : undefined}
+            className={`flex items-center rounded-lg text-[#8892a4] hover:text-red-400 hover:bg-red-900/20 transition-colors overflow-hidden
+              ${isExpanded ? 'w-full px-3 py-2.5 h-10' : 'w-10 h-10 justify-center shrink-0'}
+            `}
           >
-            <span className="flex items-center gap-3">
-              <LogOut size={18} />
+            <LogOut size={20} className="shrink-0" />
+            <span className={`whitespace-nowrap font-medium text-[14px] transition-all duration-200 ${isExpanded ? 'opacity-100 ml-3' : 'opacity-0 w-0 overflow-hidden ml-0'}`}>
               Sign Out
             </span>
+          </button>
+          
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            title={isExpanded ? "Collapse Sidebar" : "Expand Sidebar"}
+            className={`flex items-center justify-center rounded-lg text-[#8892a4] hover:text-[#cdd3e0] hover:bg-slate-800/50 transition-colors overflow-hidden mt-2
+              w-10 h-10 shrink-0 ${isExpanded ? 'ml-2' : ''}
+            `}
+          >
+            {isExpanded ? <ChevronLeft size={20} className="shrink-0" /> : <ChevronRight size={20} className="shrink-0" />}
           </button>
         </div>
       </aside>
 
-      {/* Main Panel Content Area */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        {/* Top Header Panel bar */}
-        <header className="hidden md:flex bg-white h-16 border-b border-slate-200 items-center justify-between px-8 shadow-xs">
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <span className="font-semibold text-slate-800">PIO-TECH SUPPORT CENTER</span>
-            <span>/</span>
-            <span className="capitalize">{location.pathname.replace('/', '')}</span>
+      {/* Main Area */}
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+        
+        {/* Top bar */}
+        <header className="h-[60px] bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 z-30">
+          <div className="flex items-center text-sm">
+            <span className="text-slate-400 font-medium">Home</span>
+            <span className="mx-2 text-slate-300">›</span>
+            <span className="text-slate-800 font-medium capitalize">{getBreadcrumbTitle(location.pathname)}</span>
           </div>
 
-          <div className="flex items-center gap-4">
-            <span className="text-xs bg-slate-100 hover:bg-slate-200 cursor-pointer transition px-3 py-1.5 rounded text-slate-600 font-mono flex items-center gap-1">
-              <Database size={12} className={dbMode === 'supabase' ? 'text-teal-600' : 'text-amber-500'} />
-              Database Mode: <strong className="uppercase">{dbMode}</strong>
-            </span>
-            <span className="text-xs font-mono text-slate-400">
-              System Time: 2026-06-23 UTC
-            </span>
+          <div className="flex items-center gap-5">
+            <button className="text-slate-400 hover:text-slate-600 relative">
+              <Bell size={20} />
+              <span className="absolute top-0 right-0 w-2 h-2 bg-[#f97316] rounded-full border border-white"></span>
+            </button>
+            <div className="h-6 w-px bg-slate-200"></div>
+            <div className="flex items-center gap-3">
+              <div className="text-right hidden sm:block">
+                <div className="text-sm font-medium text-slate-900 leading-tight">{user?.full_name || 'User'}</div>
+                <div className="text-xs text-slate-500 leading-tight">{user?.role_name || 'Guest'}</div>
+              </div>
+              <img 
+                src={(user?.avatar_url && !user.avatar_url.includes('unsplash.com')) ? user.avatar_url : `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.full_name || user?.email || 'User')}&background=f97316&color=fff&bold=true`} 
+                alt={user?.full_name} 
+                className="w-9 h-9 rounded-full object-cover border border-slate-200"
+              />
+            </div>
           </div>
         </header>
 
-        {/* Page Inner Container */}
-        <div className="p-4 md:p-8 flex-1 max-w-7xl w-full mx-auto">
+        {/* Page Content */}
+        <main className="flex-1 overflow-y-auto bg-slate-50">
           {children}
-        </div>
-      </main>
+        </main>
+
+      </div>
     </div>
   );
 };

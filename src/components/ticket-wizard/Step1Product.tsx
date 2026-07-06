@@ -1,122 +1,116 @@
-import React from 'react';
-import { Package, ArrowRight } from 'lucide-react';
-import wizardConfig from './wizardConfig.json';
-
-import { api } from '../../lib/api';
-import { OrganizationProduct } from '../../types';
+import React, { useEffect, useState } from 'react';
+import { supabase } from '../../lib/supabase';
+import { ArrowLeft, ArrowRight, Package } from 'lucide-react';
 
 interface Step1ProductProps {
+  organizationId: string;
   selectedProductId: string;
-  organizationId?: string;
-  onSelect: (productId: string) => void;
-  onNext: () => void;
-  onCancel: () => void;
+  onSelect: (id: string, name: string) => void;
+  onBack?: () => void;
 }
 
-export const Step1Product: React.FC<Step1ProductProps> = ({ 
-  selectedProductId, 
-  organizationId,
-  onSelect, 
-  onNext,
-  onCancel
-}) => {
-  const [licensedProducts, setLicensedProducts] = React.useState<OrganizationProduct[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
+export const Step1Product: React.FC<Step1ProductProps> = ({ organizationId, selectedProductId, onSelect, onBack }) => {
+  const [products, setProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [localSelectedId, setLocalSelectedId] = useState<string>(selectedProductId);
+  const [localSelectedName, setLocalSelectedName] = useState<string>('');
 
-  React.useEffect(() => {
-    async function loadProducts() {
+  useEffect(() => {
+    const fetchProducts = async () => {
       if (!organizationId) {
-        setIsLoading(false);
+        setLoading(false);
         return;
       }
-      setIsLoading(true);
-      try {
-        const products = await api.getOrganizationProducts(organizationId);
-        setLicensedProducts(products);
-      } catch (err) {
-        console.error("Failed to load products for wizard", err);
-      } finally {
-        setIsLoading(false);
+      const { data, error } = await supabase
+        .from('organization_products')
+        .select(`
+          product_id,
+          products (
+            id,
+            product_name,
+            description,
+            icon
+          )
+        `)
+        .eq('organization_id', organizationId)
+        .eq('is_active', true);
+
+      if (error) {
+        setError(error.message);
+      } else {
+        setProducts(data?.map(cp => cp.products).filter(Boolean) || []);
       }
-    }
-    loadProducts();
+      setLoading(false);
+    };
+    fetchProducts();
   }, [organizationId]);
 
-  // Fallback to wizard config if no org or no products (e.g. legacy logic)
-  const displayProducts = licensedProducts.length > 0 
-    ? licensedProducts.map(lp => {
-        // Find matching product in wizard config to preserve the ID format (e.g., prod-dwh)
-        const match = wizardConfig.products.find(p => 
-          p.name.toLowerCase() === lp.product?.name?.toLowerCase() ||
-          p.id.replace('prod-', '').toLowerCase() === lp.product_code?.toLowerCase() ||
-          p.id === lp.product_code
-        );
-        
-        return {
-          id: match ? match.id : lp.product_code,
-          name: lp.product?.name || lp.product_code,
-          description: lp.product?.description || 'Support and ticketing.'
-        };
-      })
-    : wizardConfig.products;
+  if (loading) return <div className="p-8 text-center animate-pulse text-slate-500 font-medium text-[14px]">Loading licensed products...</div>;
+
+  const chipText = onBack ? "Selected Customer" : "Your organization";
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="text-center space-y-2">
-        <h2 className="text-2xl font-black text-slate-800 tracking-tight">Which product are you using?</h2>
-        <p className="text-slate-500 font-medium">Select the software product you need assistance with.</p>
+    <div className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-4">
+      <div className="flex-1 space-y-6">
+        <div>
+          <span className="inline-block px-3 py-1 bg-slate-100 text-slate-600 text-[12px] font-medium rounded-full mb-3">
+            {chipText}
+          </span>
+          <h3 className="text-[18px] font-medium text-slate-800">Select product</h3>
+          <p className="text-[13px] text-slate-500 mt-1">Which product is experiencing the issue?</p>
+        </div>
+
+        {error && <div className="p-3 bg-red-50 text-red-600 rounded-[8px] text-[13px]">{error}</div>}
+
+        {products.length === 0 ? (
+          <div className="p-6 bg-slate-50 text-center rounded-[10px] border border-slate-200 text-slate-500 text-[13px]">
+            No active product licenses found for this organization.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {products.map(p => {
+              const isSelected = localSelectedId === p.id;
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    setLocalSelectedId(p.id);
+                    setLocalSelectedName(p.product_name);
+                  }}
+                  className={`p-4 rounded-[10px] border-[0.5px] text-left transition-colors flex gap-3 items-start ${
+                    isSelected 
+                      ? 'bg-[#fff5ee] border-[#f97316]' 
+                      : 'bg-white border-slate-200 hover:border-[#f97316]/50'
+                  }`}
+                >
+                  <div className={`mt-0.5 text-xl ${isSelected ? 'text-[#f97316]' : 'text-slate-400'}`}>
+                    {p.icon || <Package size={20} />}
+                  </div>
+                  <div>
+                    <div className="font-medium text-[14px] text-slate-900">{p.product_name}</div>
+                    <div className="text-[12px] text-slate-500 mt-0.5 line-clamp-2">{p.description}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12 text-slate-400">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600 mr-3"></div>
-          Loading your licensed products...
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-8">
-          {displayProducts.map(product => (
-            <div 
-              key={product.id}
-              onClick={() => onSelect(product.id)}
-              className={`
-                p-5 rounded-2xl border-2 cursor-pointer transition-all duration-200 flex flex-col gap-3
-                ${selectedProductId === product.id 
-                  ? 'border-teal-500 bg-teal-50/50 shadow-sm shadow-teal-500/10' 
-                  : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'}
-              `}
-            >
-              <div className={`
-                w-12 h-12 rounded-xl flex items-center justify-center
-                ${selectedProductId === product.id ? 'bg-teal-500 text-white' : 'bg-slate-100 text-slate-500'}
-              `}>
-                <Package size={24} />
-              </div>
-              <div>
-                <h3 className={`font-bold text-lg ${selectedProductId === product.id ? 'text-teal-900' : 'text-slate-800'}`}>
-                  {product.name}
-                </h3>
-                <p className={`text-sm mt-1 ${selectedProductId === product.id ? 'text-teal-700/80' : 'text-slate-500'}`}>
-                  {product.description}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="flex justify-between items-center pt-8 mt-8 border-t border-slate-100">
+      <div className="pt-6 mt-6 border-t border-slate-200 flex justify-between items-center shrink-0">
+        {onBack ? (
+          <button onClick={onBack} className="flex items-center gap-2 px-4 py-2 border-[0.5px] border-slate-200 rounded-[8px] text-[14px] font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+            <ArrowLeft size={16} /> Back
+          </button>
+        ) : <div />}
+        
         <button 
-          onClick={onCancel}
-          className="px-6 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors"
+          onClick={() => localSelectedId && onSelect(localSelectedId, localSelectedName)}
+          disabled={!localSelectedId}
+          className="bg-[#f97316] disabled:opacity-50 text-white font-medium text-[14px] py-2 px-4 rounded-[8px] flex items-center gap-2 hover:bg-[#ea580c] transition-colors"
         >
-          Cancel
-        </button>
-        <button 
-          onClick={onNext}
-          disabled={!selectedProductId}
-          className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-bold shadow-sm transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Next Step <ArrowRight size={16} />
+          Next <ArrowRight size={16} />
         </button>
       </div>
     </div>

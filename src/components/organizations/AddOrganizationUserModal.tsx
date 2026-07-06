@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, UserPlus, Copy, Check, Building2, AlertCircle } from 'lucide-react';
 import { api } from '../../lib/api';
+import { supabaseAnon } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Tenant } from '../../types';
 
@@ -22,12 +23,51 @@ export const AddOrganizationUserModal: React.FC<AddOrganizationUserModalProps> =
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    role: 'BANK_USER', // Default for bank organizations
+    role: organization.is_internal ? 'SUPPORT_ENGINEER' : 'BANK_USER',
     department: '',
     jobTitle: '',
     phone: '',
     notes: ''
   });
+  
+  const [availableRoles, setAvailableRoles] = useState<{ id: string, role_code: string, role_name: string }[]>([]);
+
+  React.useEffect(() => {
+    // Determine the default role when modal opens based on org type
+    setFormData(prev => ({
+      ...prev,
+      role: organization.is_internal ? 'SUPPORT_ENGINEER' : 'BANK_USER'
+    }));
+
+    // Fetch roles
+    const fetchRoles = async () => {
+      try {
+        const { data, error } = await supabaseAnon
+          .from('roles')
+          .select('id, role_code, role_name');
+        
+        if (error) throw error;
+        
+        if (data) {
+          // Filter based on is_internal
+          const filtered = data.filter(r => {
+            if (organization.is_internal) {
+              return ['SUPPORT_ENGINEER', 'SUPPORT_MANAGER', 'ADMIN'].includes(r.role_code);
+            } else {
+              return ['BANK_USER', 'BANK_MANAGER', 'BANK_ADMIN'].includes(r.role_code);
+            }
+          });
+          setAvailableRoles(filtered);
+        }
+      } catch (err) {
+        console.error("Failed to fetch roles:", err);
+      }
+    };
+
+    if (isOpen) {
+      fetchRoles();
+    }
+  }, [isOpen, organization.is_internal]);
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +89,16 @@ export const AddOrganizationUserModal: React.FC<AddOrganizationUserModalProps> =
     try {
       if (!formData.name || !formData.email || !formData.role) {
         throw new Error('Please fill in all required fields.');
+      }
+
+      const internalRoles = ['SUPPORT_ENGINEER', 'SUPPORT_MANAGER', 'ADMIN'];
+      const externalRoles = ['BANK_USER', 'BANK_MANAGER', 'BANK_ADMIN'];
+      
+      if (organization.is_internal && !internalRoles.includes(formData.role)) {
+        throw new Error('Invalid role selected for an internal organization.');
+      }
+      if (!organization.is_internal && !externalRoles.includes(formData.role)) {
+        throw new Error('Invalid role selected for an external organization.');
       }
 
       // Call existing API (extra UI fields are dropped since Edge Function modification is forbidden)
@@ -236,9 +286,23 @@ export const AddOrganizationUserModal: React.FC<AddOrganizationUserModalProps> =
                     onChange={(e) => setFormData({...formData, role: e.target.value})}
                     className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-colors font-medium text-slate-700"
                   >
-                    <option value="BANK_USER">Bank User</option>
-                    <option value="SUPPORT_ENGINEER">Support Engineer</option>
-                    <option value="ADMIN">System Administrator</option>
+                    {availableRoles.length > 0 ? (
+                      availableRoles.map(r => (
+                        <option key={r.id} value={r.role_code}>{r.role_name}</option>
+                      ))
+                    ) : organization.is_internal ? (
+                      <>
+                        <option value="SUPPORT_ENGINEER">Support Engineer</option>
+                        <option value="SUPPORT_MANAGER">Support Manager</option>
+                        <option value="ADMIN">System Administrator</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="BANK_USER">Bank User</option>
+                        <option value="BANK_MANAGER">Bank Manager</option>
+                        <option value="BANK_ADMIN">Bank Administrator</option>
+                      </>
+                    )}
                   </select>
                 </div>
 

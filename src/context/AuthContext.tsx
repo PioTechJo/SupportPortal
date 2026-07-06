@@ -55,7 +55,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) {
             let profile = await api.getProfile(session.user.id);
-            console.log("2. initializeAuth() received:", { role: profile?.role, role_name: profile?.role_name, fullObject: profile });
             
             if (!profile) {
               try {
@@ -99,9 +98,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 tenant_id: profile.customer_id || profile.tenant_id,
                 customer_id: profile.customer_id || profile.tenant_id
               };
-              console.log("4. before setUser:", { role: (updatedProfile as any).role, role_name: updatedProfile.role_name, fullObject: updatedProfile });
               setUser(updatedProfile);
-              console.log("5. after setUser:", { role: updatedProfile.role, role_name: updatedProfile.role_name, fullObject: updatedProfile });
               setLoading(false);
               return;
             }
@@ -207,7 +204,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw error;
         } else if (data.user) {
           let profile = await api.getProfile(data.user.id);
-          console.log("3. signIn() received:", { role: profile?.role, role_name: profile?.role_name, fullObject: profile });
           
           if (!profile) {
             // Auto-create missing profile
@@ -249,9 +245,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               tenant_id: profile.customer_id || profile.tenant_id,
               name: profile.name || profile.full_name
             };
-            console.log("4. signIn before setUser:", { role: (finalProfile as any).role, role_name: finalProfile.role_name, fullObject: finalProfile });
             setUser(finalProfile);
-            console.log("5. signIn after setUser:", { role: (finalProfile as any).role, role_name: finalProfile.role_name, fullObject: finalProfile });
             sessionStorage.setItem('pio_tech_session_user', JSON.stringify(finalProfile));
             setLoading(false);
             return finalProfile;

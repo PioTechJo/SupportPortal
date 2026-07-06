@@ -448,9 +448,6 @@ export const api = {
 
         if (error) throw error;
 
-        console.error("DIAGNOSTICS 1: Raw response count from Supabase (Service Role):", rawProfiles?.length);
-        console.error("DIAGNOSTICS 2: Raw returned objects (Service Role):", rawProfiles);
-
         const mappedProfiles = (rawProfiles || []).map((p: any) => {
           let rName = p.role; // Fallback legacy
           if (p.roles) {
@@ -476,7 +473,6 @@ export const api = {
           };
         }) as Profile[];
 
-        console.error("DIAGNOSTICS 3: Count after mapping:", mappedProfiles.length);
         return mappedProfiles;
       },
       () => {
@@ -759,6 +755,7 @@ export const api = {
           logo_url: '🏢',
           primary_color: '#0f766e',
           support_tier: 'enterprise',
+          is_internal: row.is_internal === true,
           created_at: row.created_at
         }));
       },
@@ -878,12 +875,34 @@ export const api = {
             customers(customer_name),
             products(product_name, product_code),
             priorities(priority_name),
-            creator:users!created_by(full_name),
-            assignee:users!assigned_user_id(full_name)
+            creator:users!created_by(full_name)
           `);
-        if (error) throw error;
+        if (error) {
+          console.log('[DEBUG api.getTickets] error:', error);
+          throw error;
+        }
+        console.log('[DEBUG api.getTickets] data?.length:', data?.length);
+        if (data && data.length > 0) {
+          console.log('[DEBUG api.getTickets] data[0]:', JSON.stringify(data[0]));
+        }
+
+        const uniqueAssignedTo = Array.from(new Set((data || []).map((t: any) => t.assigned_to).filter(Boolean)));
+        const assigneeMap = new Map<string, string>();
         
-        return (data || []).map((ticket: any) => {
+        if (uniqueAssignedTo.length > 0) {
+          const { data: usersData, error: usersError } = await supabase
+            .from('users')
+            .select('id, full_name')
+            .in('id', uniqueAssignedTo);
+            
+          if (!usersError && usersData) {
+            usersData.forEach((u: any) => {
+              assigneeMap.set(u.id, u.full_name);
+            });
+          }
+        }
+
+        const mappedData = (data || []).map((ticket: any) => {
           const sCode = ticket.ticket_statuses?.status_code || '';
           
           let frontendStatus = 'open';
@@ -913,15 +932,22 @@ export const api = {
             product_name: ticket.products?.product_name || 'AML-Compliance Engine',
             customer_name: ticket.customers?.customer_name || '',
             creator_name: ticket.creator?.full_name || 'Unknown User',
-            assignee_name: ticket.assignee?.full_name || 'Unassigned',
+            assigned_to_name: ticket.assigned_to ? (assigneeMap.get(ticket.assigned_to) || 'Unassigned') : 'Unassigned',
             created_by: ticket.created_by,
-            assigned_to: ticket.assigned_user_id || null,
+            assigned_to: ticket.assigned_to || null,
             tenant_id: ticket.customer_id || null,
             category: ticket.products?.product_code?.toLowerCase() || 'other',
             created_at: ticket.created_at,
-            updated_at: ticket.updated_at
+            updated_at: ticket.updated_at,
+            justification_submitted_at: ticket.justification_submitted_at || null
           } as unknown as Ticket;
         });
+
+        console.log('[DEBUG api.getTickets] mappedData length:', mappedData.length);
+        if (mappedData.length > 0) {
+          console.log('[DEBUG api.getTickets] mappedData[0]:', mappedData[0]);
+        }
+        return mappedData;
       },
       () => {
         const tickets = loadLocalData<Ticket>('tickets', DEFAULT_TICKETS);
@@ -936,7 +962,7 @@ export const api = {
           return {
             ...ticket,
             creator_name: creator ? creator.full_name : 'Unknown User',
-            assignee_name: assignee ? assignee.full_name : 'Unassigned',
+            assigned_to_name: assignee ? assignee.full_name : 'Unassigned',
             tenant_name: tenant ? tenant.name : 'Unknown Tenant'
           };
         });
@@ -955,8 +981,7 @@ export const api = {
             customers(customer_name),
             products(product_name, product_code),
             priorities(priority_name),
-            creator:users!created_by(full_name),
-            assignee:users!assigned_user_id(full_name)
+            creator:users!created_by(full_name)
           `)
           .eq('id', id)
           .single();
@@ -964,6 +989,19 @@ export const api = {
         if (!data) return null;
 
         const ticket = data as any;
+        
+        let assignedToName = 'Unassigned';
+        if (ticket.assigned_to) {
+          const { data: userData } = await supabase
+            .from('users')
+            .select('full_name')
+            .eq('id', ticket.assigned_to)
+            .maybeSingle();
+          if (userData) {
+            assignedToName = userData.full_name;
+          }
+        }
+        
         const sCode = ticket.ticket_statuses?.status_code || '';
         
         let frontendStatus = 'open';
@@ -993,13 +1031,14 @@ export const api = {
           product_name: ticket.products?.product_name || 'AML-Compliance Engine',
           customer_name: ticket.customers?.customer_name || '',
           creator_name: ticket.creator?.full_name || 'Unknown User',
-          assignee_name: ticket.assignee?.full_name || 'Unassigned',
+          assigned_to_name: assignedToName,
           created_by: ticket.created_by,
-          assigned_to: ticket.assigned_user_id || null,
+          assigned_to: ticket.assigned_to || null,
           tenant_id: ticket.customer_id || null,
           category: ticket.products?.product_code?.toLowerCase() || 'other',
           created_at: ticket.created_at,
-          updated_at: ticket.updated_at
+          updated_at: ticket.updated_at,
+          justification_submitted_at: ticket.justification_submitted_at || null
         } as unknown as Ticket;
       },
       () => {
@@ -1016,7 +1055,7 @@ export const api = {
         return {
           ...ticket,
           creator_name: creator ? creator.full_name : 'Unknown User',
-          assignee_name: assignee ? assignee.full_name : 'Unassigned',
+          assigned_to_name: assignee ? assignee.full_name : 'Unassigned',
           tenant_name: tenant ? tenant.name : 'Unknown Tenant'
         };
       }
@@ -1038,9 +1077,9 @@ export const api = {
     }
 
     if (ticket.assigned_to && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ticket.assigned_to)) {
-      payload.assigned_user_id = ticket.assigned_to;
+      payload.assigned_to = ticket.assigned_to;
     } else {
-      payload.assigned_user_id = null;
+      payload.assigned_to = null;
     }
     
     // Map status to status_id
@@ -1123,9 +1162,9 @@ export const api = {
 
         if (updates.assigned_to !== undefined) {
           if (updates.assigned_to && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(updates.assigned_to)) {
-            payload.assigned_user_id = updates.assigned_to;
+            payload.assigned_to = updates.assigned_to;
           } else {
-            payload.assigned_user_id = null;
+            payload.assigned_to = null;
           }
         }
 
@@ -1188,7 +1227,7 @@ export const api = {
           return {
             ...tickets[idx],
             creator_name: creator ? creator.full_name : 'Unknown User',
-            assignee_name: assignee ? assignee.full_name : 'Unassigned',
+            assigned_to_name: assignee ? assignee.full_name : 'Unassigned',
             tenant_name: tenant ? tenant.name : 'Unknown Tenant'
           };
         }
@@ -1207,10 +1246,17 @@ export const api = {
             id,
             ticket_id,
             comment_text,
-            comment_by,
-            comment_type,
+            author_id,
+            is_system_generated,
+            is_internal,
             created_at,
-            author:users!comment_by (
+            escalated_team_id,
+            escalated_developer_name,
+            escalation_returned_at,
+            teams (
+              team_name
+            ),
+            author:users!author_id (
               full_name,
               roles (
                 role_name
@@ -1236,12 +1282,16 @@ export const api = {
           return {
             id: row.id,
             ticket_id: row.ticket_id,
-            author_id: row.comment_by || '',
+            author_id: row.author_id || '',
             author_name: authorInfo?.full_name || 'System / Support Team',
             author_role: (roleName === 'administrator' ? 'admin' : roleName) as UserRole,
             content: row.comment_text || '',
-            is_internal: row.comment_type === 'internal' || row.comment_type === 'revision_requested',
-            created_at: row.created_at
+            is_internal: row.is_internal || row.is_system_generated === true,
+            created_at: row.created_at,
+            escalated_team_id: row.escalated_team_id,
+            escalated_developer_name: row.escalated_developer_name,
+            escalation_returned_at: row.escalation_returned_at,
+            teams: row.teams
           };
         });
       },
@@ -1277,12 +1327,12 @@ export const api = {
         const payload: any = {
           ticket_id: comment.ticket_id,
           comment_text: comment.content,
-          comment_type: comment.is_internal ? 'internal' : 'general',
+          is_system_generated: comment.is_internal,
           created_at: new Date().toISOString()
         };
 
         if (comment.author_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(comment.author_id)) {
-          payload.comment_by = comment.author_id;
+          payload.author_id = comment.author_id;
         }
 
         const { data, error } = await supabase
@@ -1292,10 +1342,10 @@ export const api = {
             id,
             ticket_id,
             comment_text,
-            comment_by,
-            comment_type,
+            author_id,
+            is_system_generated,
             created_at,
-            author:users!comment_by (
+            author:users!author_id (
               full_name,
               roles (
                 role_name
@@ -1327,11 +1377,11 @@ export const api = {
         return {
           id: data.id,
           ticket_id: data.ticket_id,
-          author_id: data.comment_by || '',
+          author_id: data.author_id || '',
           author_name: authorInfo?.full_name || comment.author_name || 'System / Support Team',
           author_role: (roleName === 'administrator' ? 'admin' : roleName) as UserRole,
           content: data.comment_text || '',
-          is_internal: data.comment_type === 'internal' || data.comment_type === 'revision_requested',
+          is_internal: data.is_system_generated === true,
           created_at: data.created_at
         };
       },
@@ -1398,7 +1448,7 @@ export const api = {
 
   getOrganizationProducts: async (organizationId: string): Promise<OrganizationProduct[]> => {
     try {
-      const selectStr = `*, product:products!product_id(id, product_code, product_name)`;
+      const selectStr = `*, product:products!product_id(id, product_code, product_name, description, icon, color, display_order, is_active)`;
       
       const { data, error } = await supabase
         .from('organization_products')
@@ -1671,7 +1721,7 @@ export const api = {
           product_id: params.productId,
           ai_recommendation: params.aiRecommendation,
           creator_name: params.customerName,
-          assignee_name: 'Unassigned',
+          assigned_to_name: 'Unassigned',
           tenant_name: tenants.find(t => t.id === params.customerId)?.name || 'Unknown Tenant',
         };
 
@@ -1897,7 +1947,7 @@ export const api = {
         // 1. Update tickets table
         const { data: statusObj } = await supabase.from('ticket_statuses').select('id').eq('status_code', 'ASSIGNED').maybeSingle();
         const payload: any = {
-          assigned_user_id: params.agentId,
+          assigned_to: params.agentId,
           updated_at: new Date().toISOString()
         };
         if (statusObj) payload.status_id = statusObj.id;
@@ -1989,7 +2039,7 @@ export const api = {
           tickets[idx].assigned_to = params.agentId;
           tickets[idx].status = 'in_progress';
           tickets[idx].updated_at = new Date().toISOString();
-          tickets[idx].assignee_name = params.agentName;
+          tickets[idx].assigned_to_name = params.agentName;
           saveLocalData('tickets', tickets);
         }
 
@@ -2069,9 +2119,10 @@ export const api = {
         const cleanTktId = params.ticketId.replace('tick-', '').toUpperCase();
 
         // 1. Update tickets
-        const { data: statusObj } = await supabase.from('ticket_statuses').select('id').eq('status_code', 'INVESTIGATION').maybeSingle();
+        const { data: statusObj } = await supabase.from('ticket_statuses').select('id').eq('status_code', 'RESOLVED_PENDING_APPROVAL').maybeSingle();
         const payload: any = {
-          updated_at: now
+          updated_at: now,
+          resolution_justification: JSON.stringify(params.formData)
         };
         if (statusObj) payload.status_id = statusObj.id;
 
@@ -2223,7 +2274,7 @@ export const api = {
         const cleanTktId = params.ticketId.replace('tick-', '').toUpperCase();
 
         // 1. Update tickets
-        const { data: statusObj } = await supabase.from('ticket_statuses').select('id').eq('status_code', 'RESOLVED').maybeSingle();
+        const { data: statusObj } = await supabase.from('ticket_statuses').select('id').eq('status_code', 'APPROVED').maybeSingle();
         const payload: any = {
           updated_at: now
         };
@@ -2245,8 +2296,8 @@ export const api = {
             .insert({
               ticket_id: params.ticketId,
               comment_text: formatContent,
-              comment_type: 'resolution',
-              created_by: params.managerId,
+              is_system_generated: true,
+              author_id: params.managerId,
               created_at: now
             });
 
@@ -2429,8 +2480,8 @@ export const api = {
             .insert({
               ticket_id: params.ticketId,
               comment_text: `❌ **RESOLUTION REVISION REQUESTED**\n\n**Manager Feedback:** ${params.feedback}`,
-              comment_type: 'revision_requested',
-              created_by: params.managerId,
+              is_system_generated: true,
+              author_id: params.managerId,
               created_at: now
             });
 
@@ -2540,6 +2591,55 @@ export const api = {
 
         return { success: true };
       }
+    );
+  },
+
+  async getAllInternalEscalations(): Promise<any[]> {
+    return safeExecute(
+      async () => {
+        const { data, error } = await supabase
+          .from('ticket_comments')
+          .select(`
+            id,
+            ticket_id,
+            created_at,
+            escalated_team_id,
+            escalated_developer_name,
+            escalation_returned_at,
+            is_internal,
+            is_system_generated,
+            teams ( team_name ),
+            tickets ( customer_id, assigned_to, ticket_no, subject )
+          `)
+          .eq('is_internal', true);
+
+        if (error) throw error;
+        
+        const escalations = data || [];
+        const assigneeIds = [...new Set(escalations.map((esc: any) => esc.tickets?.assigned_to).filter(Boolean))];
+        const assigneeMap = new Map<string, string>();
+        
+        if (assigneeIds.length > 0) {
+          const { data: userData } = await supabase
+            .from('users')
+            .select('id, full_name')
+            .in('id', assigneeIds);
+          if (userData) {
+            userData.forEach((u: any) => {
+              assigneeMap.set(u.id, u.full_name);
+            });
+          }
+        }
+
+        return escalations.map((esc: any) => ({
+          ...esc,
+          tickets: {
+            ...esc.tickets,
+            assigned_to_name: esc.tickets?.assigned_to ? (assigneeMap.get(esc.tickets.assigned_to) || 'Unassigned') : 'Unassigned'
+          }
+        }));
+      },
+      () => [] // fallback to empty if local
     );
   }
 };

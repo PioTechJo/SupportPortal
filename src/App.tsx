@@ -8,12 +8,16 @@ import { AppLayout } from './components/AppLayout';
 // Pages
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
+import { Overview } from './pages/Overview';
 import { Tickets } from './pages/Tickets';
+import { TicketDetail } from './pages/TicketDetail';
 import { Organizations } from './pages/Organizations';
-import { AdminAnalytics } from './pages/AdminAnalytics';
+import { ReportBuilder } from './pages/ReportBuilder';
 import ResolutionApprovals from './pages/ResolutionApprovals';
 import Users from './pages/Users';
 import { Unauthorized } from './pages/Unauthorized';
+import { RecommendationRulesManager } from './pages/admin/RecommendationRulesManager';
+import { DiagnosticBuilder } from './pages/admin/DiagnosticBuilder';
 
 // Create a React Query client
 const queryClient = new QueryClient({
@@ -31,7 +35,7 @@ const RoleBasedRedirect: React.FC = () => {
   if (!user) return <Navigate to="/login" replace />;
   const roleNameUpper = user.role_name?.toUpperCase() || '';
   if (roleNameUpper === 'ADMIN' || roleNameUpper === 'ADMINISTRATOR' || roleNameUpper === 'SYS_ADMIN' || roleNameUpper === 'CEO' || roleNameUpper === 'SUPPORT_MANAGER') {
-    return <Navigate to="/admin/dashboard" replace />;
+    return <Navigate to="/admin/overview" replace />;
   }
   if (roleNameUpper === 'AGENT' || roleNameUpper === 'SUPPORT_OFFICER' || roleNameUpper === 'SUPPORT_ENGINEER' || roleNameUpper === 'TEAM_LEAD') {
     return <Navigate to="/agent/dashboard" replace />;
@@ -105,10 +109,26 @@ export default function App() {
                 } 
               />
               <Route 
+                path="/admin/overview" 
+                element={
+                  <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER']}>
+                    <Overview />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
                 path="/admin/dashboard" 
                 element={
                   <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER']}>
-                    <Dashboard />
+                    <Navigate to="/admin/overview" replace />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/admin/analytics" 
+                element={
+                  <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER']}>
+                    <Navigate to="/admin/overview" replace />
                   </ProtectedRoute>
                 } 
               />
@@ -137,6 +157,14 @@ export default function App() {
                 } 
               />
               <Route 
+                path="/tickets/:id" 
+                element={
+                  <ProtectedRoute>
+                    <TicketDetail />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
                 path="/admin" 
                 element={
                   <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER']}>
@@ -145,10 +173,10 @@ export default function App() {
                 } 
               />
               <Route 
-                path="/admin/analytics" 
+                path="/admin/reports" 
                 element={
                   <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER']}>
-                    <AdminAnalytics />
+                    <ReportBuilder />
                   </ProtectedRoute>
                 } 
               />
@@ -168,6 +196,35 @@ export default function App() {
                   </ProtectedRoute>
                 } 
               />
+              <Route 
+                path="/admin/rules" 
+                element={
+                  <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER']}>
+                    <RecommendationRulesManager />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/admin/diagnostics" 
+                element={
+                  <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER']}>
+                    <DiagnosticBuilder />
+                  </ProtectedRoute>
+                } 
+              />
+              
+              {/* Configuration Routes */}
+              <Route path="/diagnostic-builder" element={
+                <ProtectedRoute allowedRoles={['admin', 'administrator']}>
+                  <DiagnosticBuilder />
+                </ProtectedRoute>
+              } />
+
+              <Route path="/recommendation-rules" element={
+                <ProtectedRoute allowedRoles={['admin', 'administrator']}>
+                  <RecommendationRulesManager />
+                </ProtectedRoute>
+              } />
 
               {/* Default Fallbacks */}
               <Route path="/unauthorized" element={<Unauthorized />} />

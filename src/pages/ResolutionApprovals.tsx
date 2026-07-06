@@ -131,14 +131,15 @@ export default function ResolutionApprovals() {
   const profilesMap = new Map<string, Profile>();
   profiles.forEach(p => profilesMap.set(p.id, p));
 
-  // Filter criteria: Status = 'pending_approval'
-  const pendingTickets = tickets.filter(t => t.status === 'pending_approval');
+  // Filter criteria: Status = 'RESOLVED_PENDING_APPROVAL'
+  const pendingTickets = tickets.filter(t => t.status_code === 'RESOLVED_PENDING_APPROVAL');
+
+  const uRoleUp = user?.role_name?.toUpperCase() || '';
+  const isGlobalAdmin = ['ADMIN', 'ADMINISTRATOR', 'SYS_ADMIN', 'CEO', 'SUPPORT_MANAGER'].includes(uRoleUp);
 
   // Filter further: manager_id of the assigned agent = current_user.id
   // Also support seeing all if manager_id is null/not configured OR user is administrator/selected to view all
   const filteredTickets = pendingTickets.filter(t => {
-    const uRoleUp = user?.role_name?.toUpperCase() || '';
-    const isGlobalAdmin = ['ADMIN', 'ADMINISTRATOR', 'SYS_ADMIN', 'CEO', 'SUPPORT_MANAGER'].includes(uRoleUp);
     
     const assignee = t.assigned_to ? profilesMap.get(t.assigned_to) : null;
     const isDirectReport = assignee?.manager_id === user.id;
@@ -604,25 +605,29 @@ export default function ResolutionApprovals() {
                     </div>
 
                     <div className="flex items-center gap-3">
-                      {activeRevisionId !== ticket.id && (
-                        <button
-                          type="button"
-                          onClick={() => setActiveRevisionId(ticket.id)}
-                          className="px-4 py-2 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-extrabold rounded-lg transition cursor-pointer"
-                        >
-                          Request Revision
-                        </button>
+                      {(isGlobalAdmin || isDirectReport) && (
+                        <>
+                          {activeRevisionId !== ticket.id && (
+                            <button
+                              type="button"
+                              onClick={() => setActiveRevisionId(ticket.id)}
+                              className="px-4 py-2 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-extrabold rounded-lg transition cursor-pointer"
+                            >
+                              Request Revision
+                            </button>
+                          )}
+                          
+                          <button
+                            type="button"
+                            onClick={() => handleApprove(ticket)}
+                            disabled={approveMutation.isPending}
+                            className="px-5 py-2 bg-slate-900 hover:bg-slate-950 text-white font-bold text-xs rounded-lg transition flex items-center justify-center gap-1.5 shadow-sm scroll-smooth shrink-0 cursor-pointer"
+                          >
+                            <CheckCircle size={13} className="text-teal-400 shrink-0" />
+                            <span>Approve & Publish</span>
+                          </button>
+                        </>
                       )}
-                      
-                      <button
-                        type="button"
-                        onClick={() => handleApprove(ticket)}
-                        disabled={approveMutation.isPending}
-                        className="px-5 py-2 bg-slate-900 hover:bg-slate-950 text-white font-bold text-xs rounded-lg transition flex items-center justify-center gap-1.5 shadow-sm scroll-smooth shrink-0 cursor-pointer"
-                      >
-                        <CheckCircle size={13} className="text-teal-400 shrink-0" />
-                        <span>Approve & Publish</span>
-                      </button>
                     </div>
                   </div>
 

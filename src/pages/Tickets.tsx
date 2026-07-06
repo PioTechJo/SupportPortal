@@ -1,278 +1,253 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useTickets, useTicketDetails } from '../hooks/useTickets';
 import { useAuth } from '../context/AuthContext';
 import { useTenant } from '../context/TenantContext';
-import { Ticket, Comment, UserRole, Profile, Product, CustomerProduct } from '../types';
+import { Ticket, Profile, CustomerProduct } from '../types';
 import { api } from '../lib/api';
-import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
+import { useQueryClient } from '@tanstack/react-query';
 import { 
   Search, 
-  Filter, 
   Plus, 
-  Send, 
-  Clock, 
-  User, 
-  AlertCircle, 
-  CheckCircle, 
-  FolderPlus,
-  MessageSquareCode,
-  Lock,
-  Building,
-  ArrowRightLeft,
-  X,
-  Link,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Inbox,
+  AlertCircle,
+  PlayCircle,
+  CheckCircle2,
+  XCircle,
   Package
 } from 'lucide-react';
-import { SmartTicketWizard } from '../components/ticket-wizard/SmartTicketWizard';
-import { KnowledgeBaseSearch } from '../components/KnowledgeBaseSearch';
-import { HistoricalPatternsWidget } from '../components/HistoricalPatternsWidget';
-import ResolutionModal from '../components/ResolutionModal';
-
-const getProductNameById = (id?: string) => {
-  switch (id) {
-    case 'prod-1': return 'PIO-RECON Balance Suite';
-    case 'prod-2': return 'PIO-INTEGRATOR API Gateway';
-    case 'prod-3': return 'AML-Compliance Engine';
-    case 'prod-4': return 'PIO-COLLATERAL Manager';
-    default: return id || 'Enterprise Core';
-  }
-};
+import { TicketCreationWizard } from '../components/ticket-wizard/TicketCreationWizard';
 
 export const Tickets: React.FC = () => {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { tenants } = useTenant();
   const { tickets, isLoading, createTicket, updateTicket } = useTickets();
 
-  // Selected Ticket from URL query params or state
-  const selectedTicketId = searchParams.get('id') || '';
+  // Create Modal Action
   const isCreateAction = searchParams.get('action') === 'create';
-
-  // Details hook for single ticket rendering
-  const { 
-    ticket, 
-    comments, 
-    isTicketLoading, 
-    addComment, 
-    isAddingComment 
-  } = useTicketDetails(selectedTicketId);
-
-  // States
+  
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [viewFilter, setViewFilter] = useState<string>(
+    ['SUPPORT_ENGINEER', 'TEAM_LEAD'].includes(user?.role_name?.toUpperCase() || '') ? 'assigned' : 'all'
+  );
+  const [productFilter, setProductFilter] = useState<string>('all');
+  
+  // Collapsible state
+  
+  // TODO: Temporary debug logs as requested by user
+  useEffect(() => {
+    console.log('[DEBUG Tickets.tsx] Total tickets received from useTickets():', tickets.length);
+    console.log('[DEBUG Tickets.tsx] Current viewFilter state:', viewFilter);
+  }, [tickets.length, viewFilter]);
+
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isStatusOpen, setIsStatusOpen] = useState(true);
+  const [isProductOpen, setIsProductOpen] = useState(true);
+  const [isMyWorkOpen, setIsMyWorkOpen] = useState(true);
+  const [selectedTickets, setSelectedTickets] = useState<string[]>([]);
+  const [bulkApproving, setBulkApproving] = useState(false);
+  
+  const isAdmin = ['ADMIN', 'ADMINISTRATOR', 'CEO', 'SUPPORT_MANAGER'].includes(user?.role_name?.toUpperCase() || '');
+
+  const [engineers, setEngineers] = useState<any[]>([]);
+  const [engineerFilter, setEngineerFilter] = useState<string>('all');
+  const [isEngineerFilterOpen, setIsEngineerFilterOpen] = useState(false);
+
+  const [dateRange, setDateRange] = useState<string>('all');
+  const [isDateRangeOpen, setIsDateRangeOpen] = useState(false);
+  
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [isPriorityOpen, setIsPriorityOpen] = useState(false);
 
-  const [commentContent, setCommentContent] = useState('');
-  const [isInternalComment, setIsInternalComment] = useState(false);
+  type SortColumn = 'title' | 'priority' | 'status_code' | 'customer_name' | 'assigned_to_name' | 'created_at';
+  const [sortColumn, setSortColumn] = useState<SortColumn>('created_at');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
-  // Create Ticket Form States
-  const [newTitle, setNewTitle] = useState('');
-  const [newDescription, setNewDescription] = useState('');
-  const [newPriority, setNewPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
-  const [newCategory, setNewCategory] = useState<'bug' | 'feature_request' | 'billing' | 'question' | 'other'>('bug');
-  const [newTenantId, setNewTenantId] = useState('');
-  const [newProductId, setNewProductId] = useState('');
-  const [customerProducts, setCustomerProducts] = useState<CustomerProduct[]>([]);
-  const [createError, setCreateError] = useState<string | null>(null);
-  const [createSuccess, setCreateSuccess] = useState(false);
-  const [createdTicketInfo, setCreatedTicketInfo] = useState<any>(null);
-
-  // Wizard States
-  const [wizardStep, setWizardStep] = useState(1);
-  const [wizardData, setWizardData] = useState<any>(null);
-
-  // Resolution Modal State
-  const [isResolutionModalOpen, setIsResolutionModalOpen] = useState(false);
-
-  // Load real profiles and diagnostic answers
-  const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
-  const [diagnosticAnswers, setDiagnosticAnswers] = useState<any[]>([]);
-  const [isAssigning, setIsAssigning] = useState(false);
-  const [assignmentError, setAssignmentError] = useState<string | null>(null);
-  const [adminDiagnostics, setAdminDiagnostics] = useState<any>(null);
-
-  // Fetch profiles
   useEffect(() => {
-    const fetchProfiles = async () => {
-      try {
-        const data = await api.getProfiles();
-        setAllProfiles(data || []);
-      } catch (err) {
-        console.error("Error fetching profiles:", err);
-      }
-    };
-    fetchProfiles();
-  }, []);
-
-  // Fetch diagnostics when selectedTicketId changes
-  useEffect(() => {
-    if (selectedTicketId) {
-      const fetchDiagnostics = async () => {
+    if (isAdmin) {
+      const fetchEngineers = async () => {
         try {
-          const data = await api.getDiagnosticAnswers(selectedTicketId);
-          setDiagnosticAnswers(data || []);
+          const { data: roleData } = await supabase
+            .from('roles')
+            .select('id')
+            .eq('role_code', 'SUPPORT_ENGINEER')
+            .single();
+            
+          if (roleData) {
+            const { data: usersData } = await supabase
+              .from('users')
+              .select('id, full_name, email')
+              .eq('role_id', roleData.id)
+              .eq('is_active', true);
+            
+            if (usersData) setEngineers(usersData);
+          }
         } catch (err) {
-          console.error("Error fetching diagnostics:", err);
-          setDiagnosticAnswers([]);
+          console.error('Error fetching engineers', err);
         }
       };
-      fetchDiagnostics();
-    } else {
-      setDiagnosticAnswers([]);
+      fetchEngineers();
     }
-  }, [selectedTicketId]);
+  }, [isAdmin]);
 
-  const handleAssignTicketTransaction = async (agentId: string) => {
-    if (!ticket || !user) return;
-    setIsAssigning(true);
-    setAssignmentError(null);
+  useEffect(() => {
+    setSelectedTickets([]);
+  }, [viewFilter, productFilter, search]);
+
+  const handleBulkApprove = async () => {
+    if (selectedTickets.length === 0) return;
+    setBulkApproving(true);
     try {
-      const selectedAgent = allProfiles.find(p => p.id === agentId);
-      const agentFullName = selectedAgent ? selectedAgent.full_name : 'Assigned Agent';
-      
-      await api.assignTicket({
-        ticketId: ticket.id,
-        agentId,
-        agentName: agentFullName,
-        ticketTitle: ticket.title,
-        assignedById: user.id,
-        assignedByName: user.full_name
-      });
+      const { data: statusData, error: statusError } = await supabase
+        .from('ticket_statuses')
+        .select('id')
+        .eq('status_code', 'APPROVED')
+        .single();
+        
+      if (statusError) throw statusError;
 
-      // Invalidate queries to refresh data in real-time
+      for (const ticketId of selectedTickets) {
+        const ticket = tickets.find(t => t.id === ticketId);
+        if (!ticket) continue;
+        const oldStatusId = ticket.status_id;
+
+        await supabase
+          .from('tickets')
+          .update({ status_id: statusData.id })
+          .eq('id', ticketId);
+
+        await supabase.from('audit_log').insert({
+          table_name: 'tickets',
+          record_id: ticketId,
+          action_type: 'RESOLUTION_APPROVED',
+          old_value: { status_id: oldStatusId },
+          new_value: { status_id: statusData.id },
+          changed_by: user?.id
+        });
+
+        await supabase.from('ticket_status_history').insert({
+          ticket_id: ticketId,
+          old_status_id: oldStatusId,
+          new_status_id: statusData.id,
+          changed_by: user?.id,
+          change_notes: 'Ticket resolution approved (Bulk)'
+        });
+      }
+      
+      setSelectedTickets([]);
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
-      queryClient.invalidateQueries({ queryKey: ['ticket', ticket.id] });
-    } catch (err: any) {
-      console.error(err);
-      setAssignmentError(err.message || 'Failed to process team assignment transaction.');
+    } catch (err) {
+      console.error('Error in bulk approve:', err);
+      alert('Failed to approve some tickets.');
     } finally {
-      setIsAssigning(false);
+      setBulkApproving(false);
     }
   };
 
-  // Auto-set tenant-id for client who can only create tickets inside their tenant
-  useEffect(() => {
-    const userTenantId = user?.customer_id || user?.tenant_id;
-    if (user && userTenantId) {
-      setNewTenantId(userTenantId);
-    } else if (tenants.length > 0) {
-      setNewTenantId(tenants[0].id);
-    }
-  }, [user, tenants]);
+  // Left Sidebar views
+  const allTicketsView = { id: 'all', name: 'All tickets', icon: Inbox, count: tickets.length };
+  
+  const statusViews = [
+    { id: 'new', name: 'New', count: tickets.filter(t => t.status_code === 'NEW').length },
+    { id: 'in_progress', name: 'In progress', count: tickets.filter(t => t.status_code === 'INVESTIGATION').length },
+    ...(isAdmin ? [{ id: 'pending_approval', name: 'Pending approval', count: tickets.filter(t => t.status_code === 'RESOLVED_PENDING_APPROVAL').length }] : []),
+    { id: 'approved', name: 'Approved', count: tickets.filter(t => t.status_code === 'APPROVED').length },
+    { id: 'closed', name: 'Closed', count: tickets.filter(t => t.status_code === 'CLOSED').length },
+  ];
 
-  // DEV DIAGNOSTICS: Administrator Tickets Loading Flow
-  useEffect(() => {
-    const roleUp = user?.role_name?.toUpperCase() || '';
-    const isAdmin = ['ADMIN', 'ADMINISTRATOR', 'SYS_ADMIN', 'SUPPORT_MANAGER', 'SUPPORT_ENGINEER', 'TEAM_LEAD'].includes(roleUp);
+  const myWorkViews = [
+    { id: 'assigned', name: 'Assigned to me', count: tickets.filter(t => t.assigned_to === user?.id).length },
+    { id: 'high_priority', name: 'High priority', count: tickets.filter(t => ['high', 'urgent'].includes((t.priority || '').toLowerCase())).length }
+  ];
 
-    if (isAdmin) {
-      const runDiagnostics = async () => {
-        try {
-          const { data: authUser } = await supabase.auth.getUser();
+  // Derived products from tickets for the left panel
+  const uniqueProducts = Array.from(new Set(tickets.map(t => t.product_name).filter(Boolean)));
+  const productViews = uniqueProducts.map(pName => ({
+    id: pName,
+    name: pName,
+    count: tickets.filter(t => t.product_name === pName).length
+  }));
 
-          const query = supabase
-            .from('tickets')
-            .select(`*`, { count: 'exact' });
-
-          const { data, error, status, count } = await query;
-
-          setAdminDiagnostics({
-            step1: {
-              id: authUser.user?.id,
-              email: authUser.user?.email,
-              role: user?.role_name,
-            },
-            step2: `supabase.from('tickets').select('*', { count: 'exact' })`,
-            step3: `No programmatic filters applied.\n(customer_id, organization_id, assigned_to, created_by, status, role are ALL unrestricted in the API call.)`,
-            step4: {
-              data: data ? (data.length > 0 ? data : '[] (Empty Array)') : null,
-              error,
-              status,
-              count
-            },
-            step5: data && data.length === 0 ? `EXPLICIT STATEMENT: The API request executes successfully (status 200), but returns 0 rows. Because the database contains tickets and no programmatic filters are applied, Row-Level Security (RLS) is explicitly filtering out all rows and denying access.` : `RLS did not filter out all rows.`,
-            step6: `COMPARING QUERIES:\n\n1. Bank User Query (Client):\nExecutes: supabase.from('tickets').select('*')\n\n2. Administrator Query:\nExecutes: supabase.from('tickets').select('*')\n\nHIGHLIGHTED DIFFERENCE:\nThere is NO difference in the application code or SQL query.\nThe exact same request is sent.\n\nThe ONLY difference is the RLS Policy Evaluation context on the database server:\n\nBank User Policy Match:\ncustomer_id = auth_user_customer_id() OR created_by = auth.uid()\n-> Evaluates TRUE for their own tickets.\n\nAdministrator Policy Match:\nUPPER(auth_user_role_name()) IN ('ADMIN', ...)\n-> Evaluates FALSE (or throws an exception internally like auth_user_role_name() failing), causing 0 rows to be returned.`
-          });
-        } catch (err) {
-          console.error('Diagnostics failed', err);
-        }
-      };
-      runDiagnostics();
-    } else {
-      setAdminDiagnostics(null);
-    }
-  }, [user]);
-
-  // Fetch products for create ticket dialog dynamically
-  useEffect(() => {
-    const fetchProductsForCreate = async () => {
-      try {
-        const customerId = newTenantId || user?.tenant_id || user?.customer_id || '';
-        if (customerId) {
-          let productList = await api.getCustomerProducts(customerId);
-          
-          if (productList.length === 0) {
-            const allProducts = await api.getProducts();
-            productList = allProducts.map(p => ({
-              id: `cp-fallback-${p.id}`,
-              customer_id: customerId,
-              product_id: p.id,
-              products: p
-            }));
-          }
-          
-          setCustomerProducts(productList);
-          if (productList.length > 0) {
-            setNewProductId(productList[0].products?.id || '');
-          } else {
-            setNewProductId('');
-          }
-        } else {
-          const allProducts = await api.getProducts();
-          const mappedProducts: CustomerProduct[] = allProducts.map(p => ({
-            id: `cp-debug-${p.id}`,
-            customer_id: 'internal',
-            product_id: p.id,
-            products: p
-          }));
-          setCustomerProducts(mappedProducts);
-          if (mappedProducts.length > 0) {
-            setNewProductId(mappedProducts[0].products?.id || '');
-          } else {
-            setNewProductId('');
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch product catalog', err);
-      }
-    };
-    fetchProductsForCreate();
-  }, [newTenantId, user]);
-
-  // Filters logic
   const filteredTickets = tickets.filter(ticket => {
-    const matchesSearch = (ticket.title || '').toLowerCase().includes((search || '').toLowerCase()) || 
-                          (ticket.description || '').toLowerCase().includes((search || '').toLowerCase()) ||
-                          (ticket.id || '').toLowerCase().includes((search || '').toLowerCase());
-    const matchesStatus = statusFilter === 'all' || ticket.status === statusFilter;
-    const matchesPriority = priorityFilter === 'all' || ticket.priority === priorityFilter;
-    const matchesCategory = categoryFilter === 'all' || ticket.category === categoryFilter;
+    const matchesSearch = (ticket.title || '').toLowerCase().includes(search.toLowerCase()) || 
+                          (ticket.id || '').toLowerCase().includes(search.toLowerCase());
+    
+    // View filtering
+    let matchesView = true;
+    if (viewFilter === 'new') matchesView = ticket.status_code === 'NEW';
+    if (viewFilter === 'in_progress') matchesView = ticket.status_code === 'INVESTIGATION';
+    if (viewFilter === 'pending_approval') matchesView = ticket.status_code === 'RESOLVED_PENDING_APPROVAL';
+    if (viewFilter === 'approved') matchesView = ticket.status_code === 'APPROVED';
+    if (viewFilter === 'closed') matchesView = ticket.status_code === 'CLOSED';
+    if (viewFilter === 'assigned') matchesView = ticket.assigned_to === user?.id;
+    if (viewFilter === 'high_priority') matchesView = ['high', 'urgent'].includes((ticket.priority || '').toLowerCase());
 
-    return matchesSearch && matchesStatus && matchesPriority && matchesCategory;
+    const matchesProduct = productFilter === 'all' || ticket.product_name === productFilter;
+    const matchesEngineer = !isAdmin || engineerFilter === 'all' || 
+                            (engineerFilter === 'unassigned' && !ticket.assigned_to) || 
+                            (engineerFilter !== 'unassigned' && engineerFilter !== 'all' && ticket.assigned_to === engineerFilter);
+
+    // TODO: Temporary debug logs as requested by user
+    if (viewFilter === 'assigned') {
+      console.log(`[Debug] Checking Ticket ID: ${ticket.id}`);
+      console.log(`[Debug] user.id (current user):`, user?.id);
+      console.log(`[Debug] ticket.assigned_to (from object):`, ticket.assigned_to);
+      console.log(`[Debug] ticket.assigned_user_id (legacy column, if present):`, (ticket as any).assigned_user_id);
+      console.log(`-----------------------------------`);
+    }
+
+    // Date Range filtering
+    let matchesDate = true;
+    if (dateRange !== 'all') {
+      const ticketDate = new Date(ticket.created_at);
+      const now = new Date();
+      if (dateRange === '7days') {
+        const sevenDaysAgo = new Date(now.setDate(now.getDate() - 7));
+        matchesDate = ticketDate >= sevenDaysAgo;
+      } else if (dateRange === '30days') {
+        const thirtyDaysAgo = new Date(now.setDate(now.getDate() - 30));
+        matchesDate = ticketDate >= thirtyDaysAgo;
+      }
+    }
+
+    // Priority filtering
+    let matchesPriority = true;
+    if (priorityFilter !== 'all') {
+      matchesPriority = (ticket.priority || '').toLowerCase() === priorityFilter;
+    }
+
+    return matchesSearch && matchesView && matchesProduct && matchesEngineer && matchesDate && matchesPriority;
   });
 
-  const handleSelectTicket = (id: string) => {
-    setSearchParams({ id });
-  };
+  const sortedTickets = [...filteredTickets].sort((a, b) => {
+    let valA = a[sortColumn];
+    let valB = b[sortColumn];
 
-  const handleCloseDetail = () => {
-    searchParams.delete('id');
-    setSearchParams(searchParams);
-  };
+    if (sortColumn === 'priority') {
+      const priorityWeight: Record<string, number> = { urgent: 4, high: 3, medium: 2, low: 1 };
+      valA = priorityWeight[(a.priority || 'medium').toLowerCase()] || 0;
+      valB = priorityWeight[(b.priority || 'medium').toLowerCase()] || 0;
+    } else if (sortColumn === 'created_at') {
+      valA = new Date(a.created_at).getTime();
+      valB = new Date(b.created_at).getTime();
+    } else {
+      valA = (valA || '').toString().toLowerCase();
+      valB = (valB || '').toString().toLowerCase();
+    }
+
+    if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+    if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+    return 0;
+  });
 
   const handleOpenCreateModal = () => {
     setSearchParams({ action: 'create' });
@@ -281,1086 +256,490 @@ export const Tickets: React.FC = () => {
   const handleCloseCreateModal = () => {
     searchParams.delete('action');
     setSearchParams(searchParams);
-    setNewTitle('');
-    setNewDescription('');
-    setNewProductId('');
-    setCreateError(null);
-    setCreateSuccess(false);
-    setWizardStep(1);
-    setWizardData(null);
-    setCreatedTicketInfo(null);
-  };
-
-  // Submit Comments
-  const handleAddCommentSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!commentContent.trim() || !user || !selectedTicketId) return;
-
-    try {
-      await addComment({
-        ticket_id: selectedTicketId,
-        author_id: user.id,
-        author_name: user.full_name,
-        author_role: user.role_name as any,
-        content: commentContent,
-        is_internal: isInternalComment
-      });
-
-      setCommentContent('');
-      setIsInternalComment(false);
-      
-      // Update ticket updated_at too:
-      await updateTicket({ id: selectedTicketId, updates: { updated_at: new Date().toISOString() } });
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // Submit New Ticket
-  const handleCreateTicketSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTitle.trim() || !newDescription.trim() || !newTenantId) {
-      setCreateError('Please enter a valid title, description, and organize tenant association.');
-      return;
-    }
-    if (!newProductId) {
-      setCreateError('You must select an affected banking module or product endpoint.');
-      return;
-    }
-
-    try {
-      setCreateError(null);
-      await createTicket({
-        title: newTitle,
-        description: newDescription,
-        status: 'open',
-        priority: newPriority,
-        category: newCategory,
-        tenant_id: newTenantId,
-        assigned_to: null,
-        product_id: newProductId
-      });
-
-      setCreateSuccess(true);
-      setTimeout(() => {
-        handleCloseCreateModal();
-      }, 1000);
-    } catch (err: any) {
-      setCreateError(err?.message || 'Failed to dispatch ticket pipeline.');
-    }
-  };
-
-  // Quick State Updates
-  const handleStatusChange = async (newStatus: any) => {
-    if (!ticket) return;
-    if (
-      newStatus === 'pending_approval' || 
-      (newStatus === 'resolved' && ticket.status !== 'pending_approval')
-    ) {
-      setIsResolutionModalOpen(true);
-      return;
-    }
-    try {
-      await updateTicket({ id: ticket.id, updates: { status: newStatus } });
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handlePriorityChange = async (newPriorityAttr: any) => {
-    if (!ticket) return;
-    try {
-      await updateTicket({ id: ticket.id, updates: { priority: newPriorityAttr } });
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleAssignAgentChange = async (newAgentId: string) => {
-    if (!ticket) return;
-    try {
-      await updateTicket({ id: ticket.id, updates: { assigned_to: newAgentId || null } });
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleApproveResolution = async () => {
-    if (!ticket || !user) return;
-    try {
-      await updateTicket({ 
-        id: ticket.id, 
-        updates: { 
-          status: 'resolved',
-          updated_at: new Date().toISOString()
-        } 
-      });
-
-      // Add approval comment:
-      await api.createComment({
-        ticket_id: ticket.id,
-        author_id: user.id,
-        author_name: user.full_name,
-        author_role: user.role_name as any,
-        content: `🎉 Resolution approved by manager ${user.full_name}. Ticket marked as Resolved.`,
-        is_internal: false
-      });
-
-      // Invalidate queries to refresh
-      queryClient.invalidateQueries({ queryKey: ['tickets'] });
-      queryClient.invalidateQueries({ queryKey: ['ticket', ticket.id] });
-    } catch (err) {
-      console.error("Failed to approve resolution draft:", err);
-    }
-  };
-
-  const handleRejectResolution = async () => {
-    if (!ticket || !user) return;
-    try {
-      await updateTicket({ 
-        id: ticket.id, 
-        updates: { 
-          status: 'in_progress',
-          updated_at: new Date().toISOString()
-        } 
-      });
-
-      // Add rejection comment:
-      await api.createComment({
-        ticket_id: ticket.id,
-        author_id: user.id,
-        author_name: user.full_name,
-        author_role: user.role_name as any,
-        content: `❌ Resolution rejected by manager ${user.full_name}. Status reverted to In Progress. Please revise root cause details or resolution documentation.`,
-        is_internal: false
-      });
-
-      // Invalidate queries to refresh
-      queryClient.invalidateQueries({ queryKey: ['tickets'] });
-      queryClient.invalidateQueries({ queryKey: ['ticket', ticket.id] });
-    } catch (err) {
-      console.error("Failed to reject resolution draft:", err);
-    }
   };
 
   const getPriorityStyle = (priority: string) => {
-    switch(priority) {
-      case 'urgent': return 'bg-red-100 text-red-800 border-red-200';
-      case 'high': return 'bg-amber-100 text-amber-800 border-amber-200';
-      case 'medium': return 'bg-blue-100 text-blue-800 border-blue-200';
-      default: return 'bg-slate-100 text-slate-800 border-slate-200';
+    switch((priority || '').toLowerCase()) {
+      case 'urgent': return 'bg-red-100 text-red-700';
+      case 'high': return 'bg-red-100 text-red-700';
+      case 'medium': return 'bg-amber-100 text-amber-700';
+      case 'low': return 'bg-green-100 text-green-700';
+      default: return 'bg-slate-100 text-slate-700';
     }
   };
 
-  const getStatusStyle = (statusCode: string) => {
-    switch((statusCode || '').toUpperCase()) {
-      case 'NEW': return 'bg-blue-50 text-blue-700 border-blue-200';
-      case 'ASSIGNED': return 'bg-purple-50 text-purple-700 border-purple-200';
-      case 'INVESTIGATION': return 'bg-amber-50 text-amber-700 border-amber-200';
-      case 'PENDING_CUSTOMER': return 'bg-orange-50 text-orange-700 border-orange-200';
-      case 'RESOLVED': return 'bg-green-50 text-green-700 border-green-200';
-      case 'CLOSED': return 'bg-gray-50 text-gray-700 border-gray-200';
-      // Fallbacks
-      case 'open': return 'bg-blue-50 text-blue-700 border-blue-200';
-      case 'in_progress': return 'bg-amber-50 text-amber-700 border-amber-200';
-      case 'resolved': return 'bg-green-50 text-green-700 border-green-200';
-      default: return 'bg-slate-50 text-slate-600 border-slate-200';
+  const getStatusDisplay = (statusCode: string) => {
+    const s = (statusCode || '').toUpperCase();
+    let color = 'bg-slate-400';
+    let text = 'Open';
+    
+    if (s === 'NEW' || s === 'OPEN') { color = 'bg-blue-500'; text = 'New'; }
+    else if (s === 'ASSIGNED') { color = 'bg-purple-500'; text = 'Assigned'; }
+    else if (s === 'INVESTIGATION' || s === 'IN_PROGRESS') { color = 'bg-amber-500'; text = 'In Progress'; }
+    else if (s === 'PENDING_CUSTOMER') { color = 'bg-orange-500'; text = 'Pending Customer'; }
+    else if (s === 'RESOLVED_PENDING_APPROVAL') { color = 'bg-amber-500'; text = 'Pending Approval'; }
+    else if (s === 'APPROVED') { color = 'bg-green-500'; text = 'Approved'; }
+    else if (s === 'RESOLVED') { color = 'bg-green-500'; text = 'Resolved'; }
+    else if (s === 'CLOSED') { color = 'bg-slate-400'; text = 'Closed'; }
+
+    return (
+      <div className="flex items-center gap-2">
+        <span className={`w-2 h-2 rounded-full ${color}`}></span>
+        <span className="text-slate-700">{text}</span>
+      </div>
+    );
+  };
+
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
     }
   };
 
-  // Pre-configured lists for select dropdowns
-  const statuses = ['open', 'in_progress', 'resolved', 'closed'];
-  const priorities = ['low', 'medium', 'high', 'urgent'];
-  const categories = ['bug', 'feature_request', 'billing', 'question', 'other'];
-
-  // Statically seed mock agents array to easily reassign inside local sandbox mode
-  const mockPersonnel = [
-    { id: 'u-agent', name: 'Dana Naber (Agent)' }
-  ];
+  const SortIcon = ({ column }: { column: SortColumn }) => {
+    if (sortColumn !== column) return null;
+    return sortDirection === 'asc' ? <ChevronUp size={14} className="ml-1 inline" /> : <ChevronDown size={14} className="ml-1 inline" />;
+  };
 
   return (
-    <div className="space-y-6 font-sans">
-      <div className="p-8 max-w-[1600px] mx-auto min-h-screen">
-      {adminDiagnostics && (
-        <div className="mb-6 p-6 bg-slate-900 text-green-400 rounded-xl border border-slate-700 font-mono text-sm overflow-auto shadow-2xl">
-          <h3 className="text-white font-bold mb-6 text-lg border-b border-slate-700 pb-2">DEV DIAGNOSTICS: ADMIN TICKETS LOADING FLOW</h3>
-          
-          <div className="mb-6">
-            <strong className="text-blue-300 text-base">STEP 1: Current Authenticated User</strong>
-            <pre className="mt-2 p-3 bg-black/50 rounded-lg text-slate-300">{JSON.stringify(adminDiagnostics.step1, null, 2)}</pre>
-          </div>
-
-          <div className="mb-6">
-            <strong className="text-blue-300 text-base">STEP 2: Exact PostgREST Query Executed</strong>
-            <pre className="mt-2 p-3 bg-black/50 rounded-lg text-slate-300">{adminDiagnostics.step2}</pre>
-          </div>
-
-          <div className="mb-6">
-            <strong className="text-blue-300 text-base">STEP 3: Every Filter Applied</strong>
-            <pre className="mt-2 p-3 bg-black/50 rounded-lg text-slate-300">{adminDiagnostics.step3}</pre>
-          </div>
-
-          <div className="mb-6">
-            <strong className="text-blue-300 text-base">STEP 4: Raw Supabase Response</strong>
-            <pre className="mt-2 p-3 bg-black/50 rounded-lg text-slate-300">{JSON.stringify(adminDiagnostics.step4, null, 2)}</pre>
-          </div>
-
-          <div className="mb-6">
-            <strong className="text-blue-300 text-base">STEP 5: Explicit RLS Statement</strong>
-            <pre className="mt-2 p-3 bg-orange-900/30 border border-orange-500/50 rounded-lg text-orange-300 whitespace-pre-wrap font-bold">{adminDiagnostics.step5}</pre>
-          </div>
-
-          <div className="mb-4">
-            <strong className="text-blue-300 text-base">STEP 6: Bank User vs Administrator Query</strong>
-            <pre className="mt-2 p-3 bg-black/50 rounded-lg text-slate-300 whitespace-pre-wrap leading-relaxed">{adminDiagnostics.step6}</pre>
-          </div>
-        </div>
-      )}
-
-      {/* Top action/filters segment */}
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4">
-        <div className="flex-1 max-w-lg relative">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-            <Search size={16} />
-          </div>
-          <input
-            type="text"
-            placeholder="Search tickets by tracking ID or keyword description..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="block w-full pl-9 pr-4 py-2 bg-slate-50 text-slate-900 placeholder-slate-400 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-500 test-sm transition"
-          />
-        </div>
-
-        <button 
-          onClick={handleOpenCreateModal}
-          className="bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs py-2 px-4 rounded-lg flex items-center gap-2 transition cursor-pointer"
+    <div className="flex h-full p-6 max-w-[1600px] mx-auto">
+      
+      {/* Left Panel Wrapper */}
+      <div 
+        className="relative shrink-0 transition-all duration-200"
+        style={{ 
+          width: isSidebarOpen ? '200px' : '0px', 
+          marginRight: isSidebarOpen ? '1.5rem' : '0' 
+        }}
+      >
+        {/* Toggle Button */}
+        <button
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className={`absolute top-0 -right-3 w-6 h-6 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 shadow-sm z-50 transition-colors`}
         >
-          <Plus size={14} />
-          Create Ticket
+          {isSidebarOpen ? <ChevronLeft size={14} className="shrink-0" /> : <ChevronRight size={14} className="shrink-0" />}
         </button>
-      </div>
-
-      {/* Filter panel bars */}
-      <div className="bg-white py-3 px-5 rounded-xl border border-slate-200 shadow-xs flex flex-wrap gap-4 items-center">
-        <div className="flex items-center gap-2 text-xs font-bold uppercase text-slate-500">
-          <Filter size={13} className="text-teal-600" />
-          Filter Parameters
-        </div>
-
-        {/* Status */}
-        <div className="flex items-center gap-1.5 text-xs">
-          <span className="text-slate-400">Status:</span>
-          <select 
-            value={statusFilter} 
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-slate-700 capitalize text-xs"
-          >
-            <option value="all">All Statuses</option>
-            {statuses.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-          </select>
-        </div>
-
-        {/* Priority */}
-        <div className="flex items-center gap-1.5 text-xs">
-          <span className="text-slate-400">Priority:</span>
-          <select 
-            value={priorityFilter} 
-            onChange={(e) => setPriorityFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-slate-700 capitalize text-xs"
-          >
-            <option value="all">All Priorities</option>
-            {priorities.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
-        </div>
-
-        {/* Category */}
-        <div className="flex items-center gap-1.5 text-xs">
-          <span className="text-slate-400">Category:</span>
-          <select 
-            value={categoryFilter} 
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-slate-700 capitalize text-xs"
-          >
-            <option value="all">All Categories</option>
-            {categories.map(c => <option key={c} value={c}>{c.replace('_', ' ')}</option>)}
-          </select>
-        </div>
-      </div>
-
-      {/* Master Detail Board Container */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         
-        {/* Left 2 column: Tickets Grid Listing */}
-        <div className={`lg:col-span-1 border border-slate-200 bg-white rounded-xl shadow-xs overflow-hidden flex flex-col h-[650px] ${selectedTicketId ? 'hidden lg:flex' : ''}`}>
-          <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 font-mono">
-              Work Queue ({filteredTickets.length})
-            </h3>
-            <span className="text-[10px] text-slate-400 font-mono">Active Filter Applied</span>
-          </div>
-
-          <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
-            {isLoading ? (
-              <div className="p-8 text-center text-slate-400 animate-pulse">Scanning ticket queue...</div>
-            ) : filteredTickets.length === 0 ? (
-              <div className="p-12 text-center text-slate-400 text-xs">
-                No matching support tickets in current queue.
+        {/* Inner Content (clipped when collapsed) */}
+        <div className={`overflow-hidden w-full h-full transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0'}`}>
+          <div className="w-[200px] flex flex-col gap-6 select-none">
+            
+            {/* Section 1: Ticket Views */}
+        <div>
+          <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 px-2">Ticket views</h3>
+          <nav className="flex flex-col gap-1">
+            
+            {/* All tickets */}
+            <button
+              onClick={() => { setViewFilter('all'); setProductFilter('all'); }}
+              className={`
+                flex items-center justify-between px-3 py-2 rounded-lg text-[13px] transition-colors w-full text-left
+                ${viewFilter === 'all' && productFilter === 'all' ? 'bg-[#fff5ee] text-[#f97316] font-medium' : 'text-slate-600 hover:bg-slate-100'}
+              `}
+            >
+              <div className="flex items-center gap-2">
+                <Inbox size={16} className={viewFilter === 'all' && productFilter === 'all' ? 'text-[#f97316]' : 'text-slate-400'} />
+                <span>All tickets</span>
               </div>
-            ) : (
-              filteredTickets.map(t => {
-                const isSelected = t.id === selectedTicketId;
+              <span className={`text-xs ${viewFilter === 'all' && productFilter === 'all' ? 'text-[#f97316]' : 'text-slate-400'}`}>{allTicketsView.count}</span>
+            </button>
+
+            {/* By status */}
+            <button 
+              type="button"
+              onClick={(e) => { e.preventDefault(); setIsStatusOpen(prev => !prev); }} 
+              className="flex items-center justify-between px-3 py-2 text-[13px] text-slate-600 hover:bg-slate-100 rounded-lg w-full text-left font-medium mt-1"
+            >
+              <span>By status</span>
+              {isStatusOpen ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
+            </button>
+            <div className={`flex flex-col gap-0.5 overflow-hidden transition-all duration-150 ease-in-out ${isStatusOpen ? 'max-h-[500px] opacity-100 mt-1' : 'max-h-0 opacity-0 mt-0'}`}>
+              {statusViews.map(view => {
+                const isActive = viewFilter === view.id && productFilter === 'all';
                 return (
-                  <div
-                    key={t.id}
-                    onClick={() => handleSelectTicket(t.id)}
-                    className={`p-4 transition duration-200 cursor-pointer text-left border-l-4 ${isSelected ? 'bg-teal-50/70 border-teal-500' : 'hover:bg-slate-50/60 border-transparent'}`}
+                  <button
+                    key={view.id}
+                    onClick={() => { setViewFilter(view.id); setProductFilter('all'); }}
+                    className={`
+                      flex items-center justify-between py-1.5 pr-3 pl-8 rounded-lg text-[13px] transition-colors w-full text-left
+                      ${isActive ? 'bg-[#fff5ee] text-[#f97316] font-medium' : 'text-slate-500 hover:bg-slate-100'}
+                    `}
                   >
-                    <div className="flex justify-between items-start gap-2">
-                      <span className="text-[10px] font-bold font-mono text-slate-400 uppercase tracking-widest">{t.id}</span>
-                      <span className="text-[10px] font-medium text-slate-400 font-mono">{new Date(t.created_at).toLocaleDateString()}</span>
+                    <div className="flex items-center gap-2.5 truncate">
+                      <div className={`w-1 h-1 rounded-full shrink-0 ${isActive ? 'bg-[#f97316]' : 'bg-slate-300'}`} />
+                      <span className="truncate">{view.name}</span>
                     </div>
-
-                    <h4 className="text-sm font-bold text-slate-900 mt-1 truncate">{t.title}</h4>
-                    <p className="text-xs text-slate-500 font-mono truncate mt-1">{t.customer_name}</p>
-
-                    <div className="flex items-center gap-1.5 mt-3.5">
-                      <span className={`text-[9px] uppercase tracking-wider font-semibold border px-2 py-0.5 rounded-full ${getPriorityStyle(t.priority)}`}>
-                        {t.priority}
-                      </span>
-                      <span className={`text-[9px] uppercase tracking-wider font-semibold border px-2 py-0.5 rounded-full ${getStatusStyle(t.status_code || t.status)}`}>
-                        {t.status_code ? t.status_code.replace('_', ' ') : t.status}
-                      </span>
-                      <span className="text-[9px] text-slate-400 uppercase font-bold font-mono ml-auto">
-                        {t.category}
-                      </span>
-                    </div>
-                  </div>
+                    <span className={`text-xs ${isActive ? 'text-[#f97316]' : 'text-slate-400'}`}>{view.count}</span>
+                  </button>
                 );
-              })
+              })}
+            </div>
+
+            {/* By product */}
+            {productViews.length > 0 && (
+              <>
+                <button 
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); setIsProductOpen(prev => !prev); }} 
+                  className="flex items-center justify-between px-3 py-2 text-[13px] text-slate-600 hover:bg-slate-100 rounded-lg w-full text-left font-medium mt-1"
+                >
+                  <span>By product</span>
+                  {isProductOpen ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
+                </button>
+                <div className={`flex flex-col gap-0.5 overflow-hidden transition-all duration-150 ease-in-out ${isProductOpen ? 'max-h-[1000px] opacity-100 mt-1' : 'max-h-0 opacity-0 mt-0'}`}>
+                  {productViews.map(prod => {
+                    const isActive = productFilter === prod.name;
+                    return (
+                      <button
+                        key={prod.id}
+                        onClick={() => { setProductFilter(prod.name); setViewFilter('all'); }}
+                        className={`
+                          flex items-center justify-between py-1.5 pr-3 pl-8 rounded-lg text-[13px] transition-colors w-full text-left
+                          ${isActive ? 'bg-[#fff5ee] text-[#f97316] font-medium' : 'text-slate-500 hover:bg-slate-100'}
+                        `}
+                      >
+                        <div className="flex items-center gap-2.5 truncate">
+                          <div className={`w-1 h-1 rounded-full shrink-0 ${isActive ? 'bg-[#f97316]' : 'bg-slate-300'}`} />
+                          <span className="truncate">{prod.name}</span>
+                        </div>
+                        <span className={`text-xs ${isActive ? 'text-[#f97316]' : 'text-slate-400'}`}>{prod.count}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
             )}
-          </div>
+          </nav>
         </div>
 
-        {/* Right 1 column or overlay details: Ticket detail pane */}
-        <div className={`lg:col-span-2 border border-slate-200 bg-white rounded-xl shadow-xs overflow-hidden flex flex-col h-[650px] ${!selectedTicketId ? 'hidden lg:flex' : ''}`}>
-          {selectedTicketId ? (
-            isTicketLoading ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8 space-y-2">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-500" />
-                <span className="text-xs font-medium">Reconciling ledger index...</span>
-              </div>
-            ) : ticket ? (
-              (() => {
-                const roleUp = user?.role_name?.toUpperCase() || '';
-                const isAdminOrAgent = roleUp === 'ADMIN' || roleUp === 'ADMINISTRATOR' || roleUp === 'SYS_ADMIN' || roleUp === 'AGENT' || roleUp === 'SUPPORT_ENGINEER' || roleUp === 'SUPPORT_OFFICER';
-                const isSystemAdmin = roleUp === 'ADMIN' || roleUp === 'ADMINISTRATOR' || roleUp === 'SYS_ADMIN';
-
-                // Resolve eligible agents to assign to
-                const eligibleAgents = allProfiles.filter(p => {
-                  const pRoleUp = p.role_name?.toUpperCase() || '';
-                  const isAgent = pRoleUp === 'AGENT' || pRoleUp === 'SUPPORT_ENGINEER' || pRoleUp === 'SUPPORT_OFFICER' || pRoleUp === 'ADMIN' || pRoleUp === 'ADMINISTRATOR' || pRoleUp === 'SYS_ADMIN';
-                  if (!isAgent) return false;
-                  if (isSystemAdmin) return true;
-                  
-                  const ticketIdCust = (ticket as any).customer_id || ticket.tenant_id;
-                  const agentIdCust = p.customer_id || p.tenant_id;
-                  return agentIdCust === ticketIdCust;
-                });
-
-                const getInitials = (name?: string) => {
-                  if (!name) return '??';
-                  const parts = name.trim().split(' ');
-                  if (parts.length > 1) {
-                    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-                  }
-                  return name.substring(0, 2).toUpperCase();
-                };
-
-                const getCommentTypeBadge = (comment: Comment) => {
-                  const role = (comment.author_role || '').toLowerCase();
-                  const name = (comment.author_name || '').toLowerCase();
-                  const content = (comment.content || '').toLowerCase();
-                  
-                  if (role === 'system' || name.includes('system') || content.includes('system logged') || content.includes('audit log')) {
-                    return { label: 'System', style: 'bg-indigo-100 text-indigo-800 border-indigo-200' };
-                  }
-                  if (role === 'ai' || name.includes('ai') || name.includes('gemini') || name.includes('intelligence') || content.includes('hypothesized root cause')) {
-                    return { label: 'AI', style: 'bg-teal-100 text-teal-800 border-teal-200 font-bold' };
-                  }
-                  if (role === 'client' || role === 'cab_user' || role === 'customer') {
-                    return { label: 'Customer', style: 'bg-emerald-100 text-emerald-800 border-emerald-200' };
-                  }
-                  return { label: 'Agent', style: 'bg-amber-100 text-amber-800 border-amber-200' };
-                };
-
-                if (isAdminOrAgent) {
-                  return (
-                    <div className="flex-1 flex flex-col h-full overflow-hidden text-left" id="admin-detail-root-layout">
-                      {/* Detail Header bar */}
-                      <div className="p-4 border-b border-slate-100 bg-slate-50/80 flex justify-between items-center shrink-0" id="admin-detail-header">
-                        <div className="flex items-center gap-2">
-                          <button 
-                            onClick={handleCloseDetail}
-                            className="p-1 hover:bg-slate-200 text-slate-500 rounded block lg:hidden"
-                            aria-label="Back to queue"
-                          >
-                            <X size={18} />
-                          </button>
-                          <div>
-                            <span className="text-[9px] font-extrabold font-mono text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full border border-teal-100 leading-none">{ticket.id}</span>
-                            <p className="text-[10px] text-slate-400 font-medium font-mono mt-0.5">{ticket.customer_name}</p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <span className="text-[9px] font-black uppercase tracking-wider px-2 py-1 bg-slate-150 text-slate-700 rounded-sm border border-slate-200 font-mono">
-                            {user?.role_name} Access Mode
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Split Grid Layout Content */}
-                      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden" id="admin-split-body">
-                        
-                        {/* LEFT: 70% Width Detail Main Content */}
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6 lg:border-r lg:border-slate-150">
-                          
-                          {/* Structured Cognitive AI Diagnostics Cards */}
-                          {diagnosticAnswers.length > 0 && (
-                            <div className="bg-indigo-50/40 border border-indigo-100 rounded-xl p-5 space-y-3" id="diagnostic-segment">
-                              <h4 className="text-[10px] font-black uppercase text-indigo-700 tracking-wider font-mono flex items-center gap-1.5 label-diagnostics">
-                                🧠 COGNITIVE DIAGNOSTIC ANSWERS & TELEMETRY
-                              </h4>
-                              <div className="grid grid-cols-1 gap-3">
-                                {diagnosticAnswers.map((ans, idx) => (
-                                  <div key={ans.id || idx} className="text-left py-1" id={`diag-ans-${idx}`}>
-                                    <span className="text-xs font-bold text-slate-800 block">Q: {ans.question_text}</span>
-                                    <span className="text-xs text-slate-600 mt-1 block pl-3 border-l-2 border-indigo-400 font-mono font-medium">{ans.answer_text}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Resolution Draft & Approval Review Panel */}
-                          {(ticket.status === 'pending_approval' || (ticket as any).resolution_draft) && (
-                            <div className="bg-amber-50/40 border border-amber-200 rounded-xl p-5 space-y-4 text-slate-800" id="resolution-review-block">
-                              <div className="flex items-center justify-between border-b border-amber-200/60 pb-2.5">
-                                <div className="flex items-center gap-2">
-                                  <CheckCircle className="text-amber-600 shrink-0" size={18} />
-                                  <div>
-                                    <h4 className="text-xs font-black uppercase text-amber-800 tracking-wider font-mono">
-                                      Resolution Document Draft {ticket.status === 'pending_approval' ? '(Awaiting Approval)' : '(Approved)'}
-                                    </h4>
-                                    <p className="text-[10px] text-slate-500 italic mt-0.5">
-                                      Submitted {ticket.resolution_submitted_at ? `on ${new Date(ticket.resolution_submitted_at).toLocaleString()}` : ''}
-                                    </p>
-                                  </div>
-                                </div>
-                                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase font-mono tracking-wider border ${
-                                  ticket.status === 'pending_approval' 
-                                    ? 'bg-amber-100 text-amber-800 border-amber-200 animate-pulse' 
-                                    : 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                                }`}>
-                                  {ticket.status === 'pending_approval' ? 'Pending Approval' : 'Verified'}
-                                </span>
-                              </div>
-
-                              {(ticket as any).resolution_draft ? (
-                                <div className="grid grid-cols-1 gap-3.5 text-xs text-left">
-                                  <div>
-                                    <span className="font-extrabold text-[10px] text-slate-500 font-mono block uppercase">
-                                      1. Root Cause
-                                    </span>
-                                    <p className="bg-white border border-slate-150 p-3 rounded-lg leading-relaxed text-slate-700 mt-1 font-sans">
-                                      {(ticket as any).resolution_draft.rootCause}
-                                    </p>
-                                  </div>
-
-                                  <div>
-                                    <span className="font-extrabold text-[10px] text-slate-500 font-mono block uppercase">
-                                      2. Resolution Steps
-                                    </span>
-                                    <p className="bg-white border border-slate-150 p-3 rounded-lg leading-relaxed text-slate-700 mt-1 font-sans">
-                                      {(ticket as any).resolution_draft.resolutionSteps}
-                                    </p>
-                                  </div>
-
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <div>
-                                      <span className="font-extrabold text-[10px] text-slate-500 font-mono block uppercase">
-                                        3. Resolution Category
-                                      </span>
-                                      <p className="bg-white border border-slate-150 py-1.5 px-3 rounded-lg font-mono font-bold text-[11px] text-slate-700 mt-1">
-                                        {(ticket as any).resolution_draft.resolutionCategory || 'Uncategorized'}
-                                      </p>
-                                    </div>
-
-                                    {(ticket as any).resolution_draft.referenceLink && (
-                                      <div>
-                                        <span className="font-extrabold text-[10px] text-slate-500 font-mono block uppercase">
-                                          Attached documentation reference
-                                        </span>
-                                        <div className="bg-white border border-slate-150 py-1.5 px-3 rounded-lg flex items-center gap-1.5 mt-1 text-teal-600 truncate font-mono text-[11px] font-medium">
-                                          <Link size={11} className="shrink-0" />
-                                          <a 
-                                            href={(ticket as any).resolution_draft.referenceLink.startsWith('http') ? (ticket as any).resolution_draft.referenceLink : '#'}
-                                            target="_blank" 
-                                            rel="noopener noreferrer"
-                                            className="hover:underline truncate"
-                                          >
-                                            {(ticket as any).resolution_draft.referenceLink}
-                                          </a>
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  {(ticket as any).resolution_draft.preventiveMeasures && (
-                                    <div>
-                                      <span className="font-extrabold text-[10px] text-slate-500 font-mono block uppercase">
-                                        4. Preventive Measures
-                                      </span>
-                                      <p className="bg-white border border-slate-150 p-3 rounded-lg leading-relaxed text-slate-700 mt-1 font-sans">
-                                        {(ticket as any).resolution_draft.preventiveMeasures}
-                                      </p>
-                                    </div>
-                                  )}
-                                </div>
-                              ) : (
-                                <p className="text-xs text-slate-400 italic">No formal resolution documents attached.</p>
-                              )}
-
-                              {ticket.status === 'pending_approval' && isSystemAdmin && (
-                                <div className="pt-3 border-t border-amber-200/50 flex flex-wrap gap-3.5 justify-end">
-                                  <button
-                                    type="button"
-                                    onClick={handleRejectResolution}
-                                    className="px-4 py-2 border border-red-200 hover:border-red-300 bg-red-50 hover:bg-red-105 text-red-750 text-xs font-semibold rounded-lg transition cursor-pointer select-none"
-                                    id="btn-reject-resolution"
-                                  >
-                                    Reject & Decline
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={handleApproveResolution}
-                                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs flex items-center gap-1.5 transition cursor-pointer select-none"
-                                    id="btn-approve-resolution"
-                                  >
-                                    <CheckCircle size={13} /> Approve Resolution
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* AI Knowledge base dynamic search */}
-                          <div id="kb-search-container">
-                            <KnowledgeBaseSearch productId={(ticket as any).product_id || (ticket.title?.includes("INTEGRATOR") ? "prod-2" : ticket.title?.includes("RECON") ? "prod-1" : ticket.title?.includes("AML") ? "prod-3" : ticket.title?.includes("COLLATERAL") ? "prod-4" : "prod-2")} />
-                          </div>
-
-                          {/* Title and Narrative Description */}
-                          <div className="space-y-4" id="ticket-narration">
-                            <h2 className="text-xl font-extrabold text-slate-900 tracking-tight" id="ticket-title-heading">{ticket.title}</h2>
-                            
-                            <div className="flex flex-wrap items-center gap-3.5 text-xs text-slate-400">
-                              <span className="flex items-center gap-1.5"><Clock size={13} /> {new Date(ticket.created_at).toLocaleString()}</span>
-                              <span className="flex items-center gap-1.5"><User size={13} /> Coordinator: {ticket.creator_name}</span>
-                              <span className="flex items-center gap-1.5 uppercase font-mono tracking-wider font-bold text-[10px]">CATEGORY: {ticket.category}</span>
-                            </div>
-
-                            <div className="mt-4 p-4.5 bg-slate-50/75 rounded-xl border border-slate-100 leading-relaxed text-slate-700 text-xs font-mono whitespace-pre-wrap shadow-inner" id="ticket-description-box">
-                              {ticket.description}
-                            </div>
-                          </div>
-
-                          {/* Gemini Historical Pattern Intelligence widget */}
-                          <div id="historical-patterns-container">
-                            <HistoricalPatternsWidget 
-                              productId={(ticket as any).product_id || (ticket.title?.includes("INTEGRATOR") ? "prod-2" : ticket.title?.includes("RECON") ? "prod-1" : ticket.title?.includes("AML") ? "prod-3" : ticket.title?.includes("COLLATERAL") ? "prod-4" : "prod-2")} 
-                              currentDescription={ticket.description}
-                            />
-                          </div>
-
-                          {/* Chronological thread for Response logs */}
-                          <div className="space-y-4 pt-4 border-t border-slate-100" id="comment-thread-logs">
-                            <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-400 font-mono">
-                              Response logs / Thread ({comments.length})
-                            </h3>
-
-                            <div className="space-y-3.5">
-                              {comments.length === 0 ? (
-                                <p className="text-xs text-slate-400 italic">No comment entries reported yet.</p>
-                              ) : (
-                                comments.map((comment) => {
-                                  const isInternal = comment.is_internal;
-                                  const badge = getCommentTypeBadge(comment);
-                                  return (
-                                    <div 
-                                      key={comment.id}
-                                      className={`p-4 rounded-xl border transition ${isInternal ? 'bg-amber-50/50 border-amber-200' : 'bg-white border-slate-200 shadow-2xs'}`}
-                                      id={`comment-card-${comment.id}`}
-                                    >
-                                      <div className="flex justify-between items-center mb-2">
-                                        <div className="flex items-center gap-2">
-                                          <div className="h-6 w-6 bg-slate-900 text-teal-400 text-[10px] font-bold rounded-full flex items-center justify-center font-mono">
-                                            {getInitials(comment.author_name)}
-                                          </div>
-                                          <span className="text-xs font-bold text-slate-900">{comment.author_name}</span>
-                                          <span className={`text-[9px] uppercase font-bold font-mono tracking-wider px-1.5 py-0.5 rounded border ${badge.style}`}>
-                                            {badge.label} {isInternal && '• Internal Access'}
-                                          </span>
-                                        </div>
-                                        <span className="text-[10px] text-slate-400 font-mono">
-                                          {new Date(comment.created_at).toLocaleDateString()} {new Date(comment.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        </span>
-                                      </div>
-                                      <p className="text-xs text-slate-700 leading-relaxed pl-8 whitespace-pre-wrap">{comment.content}</p>
-                                    </div>
-                                  );
-                                })
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Add comment action form */}
-                          <div className="pt-4 border-t border-slate-100 shrink-0" id="comment-box-editor">
-                            <form onSubmit={handleAddCommentSubmit} className="space-y-3">
-                              <textarea
-                                placeholder="Draft support response summary..."
-                                value={commentContent}
-                                onChange={(e) => setCommentContent(e.target.value)}
-                                required
-                                className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs placeholder-slate-400 ring-offset-white focus:outline-none focus:ring-1 focus:ring-teal-500 h-20 transition"
-                                id="comment-textarea"
-                              />
-
-                              <div className="flex justify-between items-center">
-                                <label className="flex items-center gap-2 text-xs text-slate-500 font-mono cursor-pointer select-none">
-                                  <input
-                                    type="checkbox"
-                                    checked={isInternalComment}
-                                    onChange={(e) => setIsInternalComment(e.target.checked)}
-                                    className="rounded text-teal-600 focus:ring-teal-500 w-3.5 h-3.5"
-                                  />
-                                  <span className="flex items-center gap-1 font-semibold text-amber-600 uppercase text-[10px]"><Lock size={11} /> Mark internal notes</span>
-                                </label>
-
-                                <button
-                                  type="submit"
-                                  disabled={isAddingComment || !commentContent.trim()}
-                                  className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-2 cursor-pointer transition ml-auto"
-                                  id="btn-comment-submit"
-                                >
-                                  {isAddingComment ? 'Syncing...' : 'Dispatch Comment'}
-                                  <Send size={12} />
-                                </button>
-                              </div>
-                            </form>
-                          </div>
-
-                        </div>
-
-                        {/* RIGHT: 30% Width Assignment / Lifecycle Sidebar Status Control panel */}
-                        <div className="w-full lg:w-72 shrink-0 bg-slate-50/70 p-5 flex flex-col space-y-6 overflow-y-auto" id="admin-sidebar-controls">
-                          
-                          {/* Status flow checker: Open -> In Progress -> Pending Review -> Resolved -> Closed */}
-                          <div className="space-y-3" id="state-controls-section">
-                            <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-wider font-mono">
-                              Ticket Lifecycle Control
-                            </h4>
-                            <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
-                              {[
-                                { value: 'open', label: 'Open' },
-                                { value: 'in_progress', label: 'In Progress' },
-                                { value: 'pending_approval', label: 'Pending Approval' },
-                                { value: 'resolved', label: 'Resolved' },
-                                { value: 'closed', label: 'Closed' }
-                              ].map((step) => {
-                                const isCurrent = ticket.status === step.value;
-                                return (
-                                  <button
-                                    key={step.value}
-                                    type="button"
-                                    onClick={() => handleStatusChange(step.value)}
-                                    className={`w-full py-2 px-3 rounded-lg border text-left text-xs font-semibold flex items-center justify-between transition cursor-pointer ${
-                                      isCurrent
-                                        ? 'bg-slate-900 border-slate-900 text-white shadow-xs'
-                                        : 'bg-slate-50/60 hover:bg-slate-100 border-slate-200/80 text-slate-600'
-                                    }`}
-                                    id={`status-step-${step.value}`}
-                                  >
-                                    <span>{step.label}</span>
-                                    {isCurrent && (
-                                      <span className="h-2 w-2 rounded-full bg-teal-400 animate-pulse" />
-                                    )}
-                                  </button>
-                                );
-                              })}
-
-                              {['open', 'in_progress'].includes(ticket.status) && (
-                                <button
-                                  type="button"
-                                  onClick={() => setIsResolutionModalOpen(true)}
-                                  className="w-full mt-2.5 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-lg flex items-center justify-center gap-1.5 shadow-xs transition cursor-pointer"
-                                  id="btn-trigger-resolve"
-                                >
-                                  <span>✨ Submit Resolution</span>
-                                </button>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Assignment Control Box */}
-                          <div className="space-y-3" id="team-assignment-section">
-                            <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-wider font-mono">
-                              Team Assignment Panel
-                            </h4>
-                            <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-4">
-                              
-                              {/* Current Assignee Details Cards */}
-                              <div>
-                                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest block mb-1.5 font-mono">
-                                  Current Assignee
-                                </span>
-                                {ticket.assigned_to ? (
-                                  <div className="flex items-center gap-2.5 bg-slate-50 p-2.5 rounded-lg border border-slate-150" id="current-assignee-card">
-                                    <div className="h-8 w-8 bg-slate-900 text-teal-300 font-extrabold rounded-full flex items-center justify-center font-mono text-xs uppercase shadow-inner">
-                                      {getInitials(ticket.assignee_name || 'Assigned Agent')}
-                                    </div>
-                                    <div className="min-w-0">
-                                      <p className="text-xs font-extrabold text-slate-900 truncate">
-                                        {ticket.assignee_name || 'Assigned Specialist'}
-                                      </p>
-                                      <span className="text-[9px] text-teal-600 font-mono uppercase tracking-wide font-bold">
-                                        Specialist Stack
-                                      </span>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="text-center py-4 border border-dashed border-slate-200 rounded-lg text-slate-400 text-xs font-medium" id="unassigned-card">
-                                    Unassigned
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Assignment interactive Select options */}
-                              <div className="space-y-2">
-                                <label className="text-[9px] text-slate-400 font-bold uppercase tracking-widest block font-mono">
-                                  Assign Team Member
-                                </label>
-
-                                <select
-                                  disabled={isAssigning}
-                                  value={ticket.assigned_to || ''}
-                                  onChange={(e) => {
-                                    if (e.target.value) {
-                                      handleAssignTicketTransaction(e.target.value);
-                                    }
-                                  }}
-                                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-teal-500 outline-none text-slate-705 font-mono cursor-pointer"
-                                  id="choose-team-member-dropdown"
-                                >
-                                  <option value="">-- Choose Agent Specialist --</option>
-                                  {eligibleAgents.map((ag) => (
-                                    <option key={ag.id} value={ag.id}>
-                                      {ag.full_name} ({['ADMIN', 'ADMINISTRATOR', 'SYS_ADMIN'].includes(ag.role_name?.toUpperCase() || '') ? 'Admin' : 'Agent'})
-                                    </option>
-                                  ))}
-                                </select>
-
-                                {assignmentError && (
-                                  <p className="text-[10px] text-red-600 font-semibold leading-normal mt-1">
-                                    ⚠ {assignmentError}
-                                  </p>
-                                )}
-                              </div>
-
-                            </div>
-                          </div>
-
-                        </div>
-
-                      </div>
-                    </div>
-                  );
-                }
-
-                // Default Legacy Client View
+        {/* Section 2: My Work */}
+        <div>
+          <button 
+            type="button"
+            onClick={(e) => { e.preventDefault(); setIsMyWorkOpen(prev => !prev); }}
+            className="flex items-center justify-between w-full text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 px-2 hover:text-slate-600 transition-colors text-left"
+          >
+            <span>My work</span>
+            {isMyWorkOpen ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
+          </button>
+          <div className={`flex flex-col gap-1 overflow-hidden transition-all duration-150 ease-in-out ${isMyWorkOpen ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
+            <nav className="flex flex-col gap-1">
+              {myWorkViews.map(view => {
+                const isActive = viewFilter === view.id && productFilter === 'all';
                 return (
-                  <div className="flex-1 flex flex-col h-full overflow-hidden" id="legacy-client-view">
-                    {/* Detail Header bar */}
-                    <div className="p-4 border-b border-slate-100 bg-slate-50/80 flex justify-between items-center shrink-0">
-                      <div className="flex items-center gap-2">
-                        <button 
-                          onClick={handleCloseDetail}
-                          className="p-1 hover:bg-slate-200 text-slate-500 rounded block lg:hidden"
-                          aria-label="Back to queue"
-                        >
-                          <X size={18} />
-                        </button>
-                        <div>
-                          <span className="text-[9px] font-extrabold font-mono text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full border border-teal-100 leading-none">{ticket.id}</span>
-                          <p className="text-[10px] text-slate-400 font-medium font-mono mt-0.5">{ticket.customer_name}</p>
-                        </div>
-                      </div>
-
-                      {/* Client actions / details status tracker */}
-                      <span className={`text-[10px] uppercase font-mono tracking-widest font-bold border px-2.5 py-1 rounded shadow-inner ${getStatusStyle(ticket.status_code || ticket.status)}`}>
-                        {ticket.status_code ? ticket.status_code.replace('_', ' ') : ticket.status}
-                      </span>
+                  <button
+                    key={view.id}
+                    onClick={() => { setViewFilter(view.id); setProductFilter('all'); }}
+                    className={`
+                      flex items-center justify-between px-3 py-2 rounded-lg text-[13px] transition-colors w-full text-left
+                      ${isActive ? 'bg-[#fff5ee] text-[#f97316] font-medium' : 'text-slate-600 hover:bg-slate-100'}
+                    `}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="truncate">{view.name}</span>
                     </div>
-
-                    <div className="flex-1 overflow-y-auto p-6 space-y-6 text-left">
-                      {/* AI Knowledge base dynamic search */}
-                      <KnowledgeBaseSearch productId={(ticket as any).product_id || (ticket.title?.includes("INTEGRATOR") ? "prod-2" : ticket.title?.includes("RECON") ? "prod-1" : ticket.title?.includes("AML") ? "prod-3" : ticket.title?.includes("COLLATERAL") ? "prod-4" : "prod-2")} />
-
-                      {/* Title and main issue description */}
-                      <div className="border-b border-slate-100 pb-5">
-                        <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">{ticket.title}</h2>
-                        
-                        <div className="flex items-center gap-3.5 mt-3.5 text-xs text-slate-400">
-                          <span className="flex items-center gap-1.5"><Clock size={13} /> {new Date(ticket.created_at).toLocaleString()}</span>
-                          <span className="flex items-center gap-1.5"><User size={13} /> Coordinator: {ticket.creator_name}</span>
-                          <span className="flex items-center gap-1.5 uppercase font-mono tracking-wider font-bold text-[10px]">CATEGORY: {ticket.category}</span>
-                        </div>
-
-                        <div className="mt-4 p-4.5 bg-slate-50 rounded-xl border border-slate-100 leading-relaxed text-slate-700 text-sm whitespace-pre-wrap">
-                          {ticket.description}
-                        </div>
-                      </div>
-
-                      {/* Gemini Historical Pattern Intelligence */}
-                      <HistoricalPatternsWidget 
-                        productId={(ticket as any).product_id || (ticket.title?.includes("INTEGRATOR") ? "prod-2" : ticket.title?.includes("RECON") ? "prod-1" : ticket.title?.includes("AML") ? "prod-3" : ticket.title?.includes("COLLATERAL") ? "prod-4" : "prod-2")} 
-                        currentDescription={ticket.description}
-                      />
-
-                      {/* Comments logs stream for clients */}
-                      <div className="space-y-4" id="client-comment-stream">
-                        <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-400 font-mono">
-                          Response logs / Thread ({comments.length})
-                        </h3>
-
-                        <div className="space-y-4">
-                          {comments.map((comment) => {
-                            const isInternal = comment.is_internal;
-                            // Client can only view external public comments!
-                            if (isInternal) return null;
-                            const badge = getCommentTypeBadge(comment);
-                            return (
-                              <div 
-                                key={comment.id}
-                                className="p-4 rounded-xl border transition bg-white border-slate-200 shadow-2xs"
-                              >
-                                <div className="flex justify-between items-center mb-1.5">
-                                  <div className="flex items-center gap-2">
-                                    <div className="h-6 w-6 bg-slate-950 text-teal-400 text-[10px] font-bold rounded-full flex items-center justify-center font-mono">
-                                      {getInitials(comment.author_name)}
-                                    </div>
-                                    <span className="text-xs font-bold text-slate-900">{comment.author_name}</span>
-                                    <span className={`text-[9px] uppercase font-bold font-mono tracking-wider px-1.5 py-0.5 rounded border ${badge.style}`}>
-                                      {badge.label}
-                                    </span>
-                                  </div>
-                                  <span className="text-[10px] text-slate-400 font-mono">{new Date(comment.created_at).toLocaleDateString()} {new Date(comment.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                </div>
-                                <p className="text-xs text-slate-700 leading-relaxed mt-2 whitespace-pre-wrap pl-8">{comment.content}</p>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Common text area editor footer for public messages */}
-                    <div className="p-4 border-t border-slate-100 bg-slate-50 shrink-0">
-                      <form onSubmit={handleAddCommentSubmit} className="space-y-3">
-                        <textarea
-                          placeholder="Draft public response..."
-                          value={commentContent}
-                          onChange={(e) => setCommentContent(e.target.value)}
-                          required
-                          className="w-full bg-white border border-slate-200 rounded-lg p-3 text-xs placeholder-slate-400 ring-offset-white focus:outline-none focus:ring-1 focus:ring-teal-500 h-20 transition"
-                        />
-
-                        <div className="flex justify-end items-center">
-                          <button
-                            type="submit"
-                            disabled={isAddingComment || !commentContent.trim()}
-                            className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-2 cursor-pointer transition"
-                          >
-                            {isAddingComment ? 'Syncing...' : 'Dispatch Comment'}
-                            <Send size={12} />
-                          </button>
-                        </div>
-                      </form>
-                    </div>
-
-                  </div>
+                    <span className={`text-xs ${isActive ? 'text-[#f97316]' : 'text-slate-400'}`}>{view.count}</span>
+                  </button>
                 );
-              })()
-            ) : (
-              <div className="flex-1 flex items-center justify-center text-slate-400 p-8 text-xs">
-                File not indexed correctly. Check reference catalog.
-              </div>
-            )
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-12 text-center">
-              <MessageSquareCode className="w-12 h-12 text-slate-200 mb-4" />
-              <h3 className="font-bold text-slate-900 text-sm">No Active Ticket Indexed</h3>
-              <p className="text-xs text-slate-500 max-w-sm mt-1.5 leading-relaxed">
-                Select a support ticket tracking ID from the list on the left to review telemetry history and append logging responses.
-              </p>
-            </div>
-          )}
+              })}
+            </nav>
+          </div>
         </div>
       </div>
+    </div>
+    </div>
 
-      {/* CREATE TICKET MODAL OVERLAY DRAWER */}
-      {isCreateAction && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs overflow-y-auto">
-          <div className="w-full max-w-4xl py-12 animate-in fade-in zoom-in-95 duration-200">
-            {createSuccess && createdTicketInfo ? (
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden font-sans max-w-xl mx-auto text-left">
-                {/* Confirmed Header */}
-                <div className="bg-slate-950 text-white p-6 text-center relative overflow-hidden">
-                  <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-teal-900/40 via-transparent to-transparent"></div>
-                  <div className="relative z-10 space-y-2">
-                    <div className="w-12 h-12 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full flex items-center justify-center mx-auto text-xl font-bold">
-                      ✓
-                    </div>
-                    <span className="text-[10px] tracking-widest font-mono font-bold text-teal-400 uppercase block">
-                      PIO-SUPPORT CONSOLE • ARCHIVE CONFIRMED
-                    </span>
-                    <h2 className="text-xl font-black tracking-tight text-white animate-pulse">
-                      Ticket Successfully Archived!
-                    </h2>
-                  </div>
-                </div>
-
-                <div className="p-6 space-y-5 text-left">
-                  <div className="space-y-2.5">
-                    <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-wider font-mono">Submission Summary</h4>
-                    <div className="bg-slate-50 border border-slate-150 rounded-xl p-4 space-y-2.5 text-xs text-slate-700">
-                      <div className="flex justify-between items-start gap-4">
-                        <span className="text-slate-400 font-bold font-mono">SUBJECT / TITLE:</span>
-                        <span className="text-slate-900 font-bold text-right">{createdTicketInfo.title}</span>
-                      </div>
-                      <div className="h-px bg-slate-200/50"></div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-400 font-bold font-mono">PRODUCT:</span>
-                        <span className="text-slate-800 font-semibold">{createdTicketInfo.productName}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-xs text-slate-600 leading-relaxed">
-                    💬 <strong className="text-slate-800">Our team has been notified.</strong> An administrator will assign a specialist to your ticket shortly.
-                  </div>
-
-                  <div className="pt-4 border-t border-slate-100 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const ticketIdToSelect = createdTicketInfo.id;
-                        handleCloseCreateModal();
-                        if (ticketIdToSelect) {
-                          setTimeout(() => {
-                            handleSelectTicket(ticketIdToSelect);
-                          }, 100);
-                        }
-                      }}
-                      className="w-full sm:w-auto bg-slate-950 hover:bg-slate-900 text-teal-400 border border-teal-900/30 font-bold font-mono text-[11px] uppercase tracking-wider px-6 py-3 rounded-xl flex items-center justify-center gap-2 transition duration-150 cursor-pointer"
-                    >
-                      <span>View My Tickets</span>
-                      <span>→</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <SmartTicketWizard 
-                organizationId={user?.customer_id || user?.tenant_id || undefined}
-                onCancel={handleCloseCreateModal}
-                onSubmitTicket={async (payload) => {
-                  try {
-                    setCreateError(null);
-
-                    let diagnosticPayloadText = '';
-                    if (payload.answers) {
-                      diagnosticPayloadText = `\n\n---------- COGNITIVE AI DIAGNOSTICS ----------\n`;
-                      Object.entries(payload.answers).forEach(([key, val]) => {
-                        const formattedVal = Array.isArray(val) ? val.join(', ') : val;
-                        diagnosticPayloadText += `[${key}] ${formattedVal}\n`;
-                      });
-                    }
-
-                    const descriptionPayload = 
-                      `Core Operational Narrative:\n${payload.description}` +
-                      diagnosticPayloadText + 
-                      `\n\n---------- TECHNICAL AUDIT TELEMETRY ----------\n` +
-                      `Authorized Product: ${payload.product}\n` +
-                      `Target Module: ${payload.module}\n` +
-                      `Issue Type: ${payload.issueType}\n`;
-
-                    const created = await api.submitWizardTicket({
-                      customerId: user?.customer_id || user?.tenant_id || 't-riyadh',
-                      productId: payload.product,
-                      priorityId: payload.priority === 'urgent' ? 'p-urgent' : payload.priority === 'high' ? 'p-high' : payload.priority === 'low' ? 'p-low' : 'p-medium',
-                      title: payload.title,
-                      description: descriptionPayload,
-                      createdBy: user?.id || 'u-client1',
-                      customerName: user?.full_name || 'Client User',
-                      productName: getProductNameById(payload.product) || 'Authorized Product',
-                      aiRecommendation: {
-                        rootCause: "Based on your selections, this appears to be a known issue type.",
-                        recommendedActions: ["Please refer to the suggested articles provided in the wizard."],
-                        estimatedCategory: payload.issueType,
-                        severity: payload.priority
-                      },
-                      diagnosticAnswers: Object.entries(payload.answers).map(([k, v]) => ({ question_text: k, answer_text: Array.isArray(v) ? v.join(', ') : v }))
-                    });
-
-                    setCreatedTicketInfo({
-                      id: created.id,
-                      title: created.title,
-                      productName: getProductNameById(payload.product) || 'Authorized Product',
-                      priority: created.priority
-                    });
-
-                    queryClient.invalidateQueries({ queryKey: ['tickets'] });
-                    setCreateSuccess(true);
-                  } catch (err: any) {
-                    console.error("Failed to submit ticket from wizard:", err);
-                    setCreateError(err.message || 'Failed to submit ticket');
-                    throw err; // Let the wizard know the submission failed
-                  }
-                }}
+      {/* Main Area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        
+        {/* Header Actions */}
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-semibold text-slate-900">
+            {(() => {
+              if (productFilter !== 'all') return productFilter;
+              if (viewFilter === 'all') return 'All tickets';
+              const sv = statusViews.find(v => v.id === viewFilter);
+              if (sv) return sv.name;
+              const mw = myWorkViews.find(v => v.id === viewFilter);
+              if (mw) return mw.name;
+              return 'Tickets';
+            })()}
+          </h1>
+          
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <input 
+                type="text" 
+                placeholder="Search tickets..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm w-64 focus:outline-none focus:ring-1 focus:ring-[#f97316]"
               />
+            </div>
+            
+            {/* Date Range Filter */}
+            <div className="relative">
+              <button 
+                onClick={() => setIsDateRangeOpen(!isDateRangeOpen)}
+                className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-slate-50"
+              >
+                <span>
+                  {dateRange === 'all' ? 'All time' : dateRange === '7days' ? 'Last 7 days' : 'Last 30 days'}
+                </span>
+                <ChevronDown size={14} className="text-slate-400 shrink-0" />
+              </button>
+              
+              {isDateRangeOpen && (
+                <div className="absolute top-full left-0 mt-1 w-40 bg-white border border-slate-200 rounded-lg shadow-lg py-1 z-50">
+                  {['all', '7days', '30days'].map(val => (
+                    <button 
+                      key={val}
+                      onClick={() => { setDateRange(val); setIsDateRangeOpen(false); }}
+                      className={`w-full text-left px-4 py-2 text-sm ${dateRange === val ? 'bg-[#fff5ee] text-[#f97316]' : 'text-slate-700 hover:bg-slate-50'}`}
+                    >
+                      {val === 'all' ? 'All time' : val === '7days' ? 'Last 7 days' : 'Last 30 days'}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            {/* Priority Filter */}
+            <div className="relative">
+              <button 
+                onClick={() => setIsPriorityOpen(!isPriorityOpen)}
+                className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-slate-50"
+              >
+                <span className="capitalize">
+                  {priorityFilter === 'all' ? 'All Priorities' : priorityFilter}
+                </span>
+                <ChevronDown size={14} className="text-slate-400 shrink-0" />
+              </button>
+              
+              {isPriorityOpen && (
+                <div className="absolute top-full left-0 mt-1 w-40 bg-white border border-slate-200 rounded-lg shadow-lg py-1 z-50">
+                  {['all', 'urgent', 'high', 'medium', 'low'].map(val => (
+                    <button 
+                      key={val}
+                      onClick={() => { setPriorityFilter(val); setIsPriorityOpen(false); }}
+                      className={`w-full text-left px-4 py-2 text-sm capitalize ${priorityFilter === val ? 'bg-[#fff5ee] text-[#f97316]' : 'text-slate-700 hover:bg-slate-50'}`}
+                    >
+                      {val === 'all' ? 'All Priorities' : val}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {isAdmin && (
+              <div className="relative">
+                <button 
+                  onClick={() => setIsEngineerFilterOpen(!isEngineerFilterOpen)}
+                  className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  <span className="truncate max-w-[120px]">
+                    {engineerFilter === 'all' ? 'All Engineers' : 
+                     engineerFilter === 'unassigned' ? 'Unassigned' : 
+                     engineers.find(e => e.id === engineerFilter)?.full_name || 'Filter by Engineer'}
+                  </span>
+                  <ChevronDown size={14} className="text-slate-400 shrink-0" />
+                </button>
+                
+                {isEngineerFilterOpen && (
+                  <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-lg py-1 z-50">
+                    <button 
+                      onClick={() => { setEngineerFilter('all'); setIsEngineerFilterOpen(false); }}
+                      className={`w-full text-left px-4 py-2 text-sm ${engineerFilter === 'all' ? 'bg-[#fff5ee] text-[#f97316]' : 'text-slate-700 hover:bg-slate-50'}`}
+                    >
+                      All Engineers
+                    </button>
+                    <button 
+                      onClick={() => { setEngineerFilter('unassigned'); setIsEngineerFilterOpen(false); }}
+                      className={`w-full text-left px-4 py-2 text-sm ${engineerFilter === 'unassigned' ? 'bg-[#fff5ee] text-[#f97316]' : 'text-slate-700 hover:bg-slate-50'}`}
+                    >
+                      Unassigned
+                    </button>
+                    {engineers.length > 0 && <div className="h-px bg-slate-100 my-1"></div>}
+                    <div className="max-h-48 overflow-y-auto custom-scrollbar">
+                      {engineers.map(eng => (
+                        <button
+                          key={eng.id}
+                          onClick={() => { setEngineerFilter(eng.id); setIsEngineerFilterOpen(false); }}
+                          className={`w-full text-left px-4 py-2 text-sm ${engineerFilter === eng.id ? 'bg-[#fff5ee] text-[#f97316]' : 'text-slate-700 hover:bg-slate-50'}`}
+                        >
+                          <div className="font-medium truncate">{eng.full_name}</div>
+                          <div className="text-xs text-slate-400 truncate">{eng.email}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
+
+            {viewFilter === 'pending_approval' && selectedTickets.length > 0 && (
+              <button 
+                onClick={handleBulkApprove}
+                disabled={bulkApproving}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors ml-2 shadow-sm disabled:opacity-50"
+              >
+                {bulkApproving ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> : <CheckCircle2 size={16} />}
+                Approve Selected ({selectedTickets.length})
+              </button>
+            )}
+            
+            <button 
+              onClick={handleOpenCreateModal}
+              className="flex items-center gap-2 px-4 py-2 bg-[#f97316] hover:bg-[#ea580c] text-white rounded-lg text-sm font-medium transition-colors ml-2 shadow-sm"
+            >
+              <Plus size={16} />
+              Create ticket
+            </button>
           </div>
         </div>
-      )}
 
-      {ticket && user && (
-        <ResolutionModal
-          isOpen={isResolutionModalOpen}
-          onClose={() => setIsResolutionModalOpen(false)}
-          ticketId={ticket.id}
-          ticketTitle={ticket.title}
-          productId={(ticket as any).product_id || 'prod-1'}
-          agentId={user.id}
-          agentName={user.full_name}
+        {/* Clean Data Table */}
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex-1 flex flex-col">
+          <div className="overflow-x-auto flex-1">
+            <table className="w-full text-left border-collapse min-w-[800px]">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/50">
+                  {viewFilter === 'pending_approval' && (
+                    <th className="px-4 py-4 w-12 text-center">
+                      <input 
+                        type="checkbox" 
+                        checked={selectedTickets.length === filteredTickets.length && filteredTickets.length > 0}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedTickets(filteredTickets.map(t => t.id));
+                          } else {
+                            setSelectedTickets([]);
+                          }
+                        }}
+                        className="rounded border-slate-300 text-[#f97316] focus:ring-[#f97316]"
+                      />
+                    </th>
+                  )}
+                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('title')}>Subject <SortIcon column="title" /></th>
+                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider w-28 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('priority')}>Priority <SortIcon column="priority" /></th>
+                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider w-40 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('status_code')}>Status <SortIcon column="status_code" /></th>
+                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider w-36 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('customer_name')}>Customer <SortIcon column="customer_name" /></th>
+                  {isAdmin && <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider w-48 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('assigned_to_name')}>Assigned To <SortIcon column="assigned_to_name" /></th>}
+                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider w-32 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('created_at')}>Created <SortIcon column="created_at" /></th>
+                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider w-20 text-right"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={viewFilter === 'pending_approval' ? (isAdmin ? 8 : 7) : (isAdmin ? 7 : 6)} className="px-6 py-12 text-center text-slate-400">Loading tickets...</td>
+                  </tr>
+                ) : sortedTickets.length === 0 ? (
+                  <tr>
+                    <td colSpan={viewFilter === 'pending_approval' ? (isAdmin ? 8 : 7) : (isAdmin ? 7 : 6)} className="px-6 py-12 text-center text-slate-400">No tickets found.</td>
+                  </tr>
+                ) : (
+                  sortedTickets.map(ticket => (
+                    <tr 
+                      key={ticket.id} 
+                      onDoubleClick={() => navigate(`/tickets/${ticket.id}`)}
+                      className="hover:bg-slate-50/50 transition-colors cursor-pointer group"
+                      title="Double-click to open ticket"
+                    >
+                      {viewFilter === 'pending_approval' && (
+                        <td className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input 
+                            type="checkbox" 
+                            checked={selectedTickets.includes(ticket.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedTickets([...selectedTickets, ticket.id]);
+                              } else {
+                                setSelectedTickets(selectedTickets.filter(id => id !== ticket.id));
+                              }
+                            }}
+                            className="rounded border-slate-300 text-[#f97316] focus:ring-[#f97316]"
+                          />
+                        </td>
+                      )}
+                      <td className="px-6 py-4">
+                        <div className="text-sm font-semibold text-slate-900 group-hover:text-[#f97316] transition-colors line-clamp-1">{ticket.title}</div>
+                        <div className="text-xs text-slate-500 mt-1 line-clamp-1">{ticket.product_name} • {ticket.category}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${getPriorityStyle(ticket.priority)}`}>
+                          {ticket.priority || 'Medium'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm font-medium">
+                        {getStatusDisplay(ticket.status_code as string)}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-slate-600 truncate max-w-[120px]">
+                        {ticket.customer_name || 'N/A'}
+                      </td>
+                      {isAdmin && (
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            {ticket.assigned_to_name ? (
+                              <>
+                                <img 
+                                  src={`https://ui-avatars.com/api/?name=${encodeURIComponent(ticket.assigned_to_name)}&background=f1f5f9&color=64748b&bold=true`} 
+                                  className="w-6 h-6 rounded-full shrink-0" 
+                                  alt="avatar" 
+                                />
+                                <span className="text-sm text-slate-700 font-medium truncate max-w-[100px]">{ticket.assigned_to_name}</span>
+                              </>
+                            ) : (
+                              <span className="text-sm text-slate-300 italic truncate max-w-[100px]">Unassigned</span>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                      <td className="px-6 py-4 text-sm text-slate-500 whitespace-nowrap">
+                        {new Date(ticket.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/tickets/${ticket.id}`);
+                          }}
+                          className="text-[#f97316] hover:text-[#ea580c] text-sm font-medium transition-colors bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100"
+                        >
+                          Open
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          
+          {/* Pagination Bar */}
+          <div className="px-6 py-4 border-t border-slate-200 bg-slate-50/50 flex items-center justify-between text-sm text-slate-500">
+            <div>Showing {filteredTickets.length} tickets</div>
+            <div className="flex items-center gap-2">
+              <button className="px-3 py-1 rounded bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-50" disabled>Previous</button>
+              <button className="px-3 py-1 rounded bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-50" disabled>Next</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {isCreateAction && (
+        <TicketCreationWizard 
+          onClose={handleCloseCreateModal} 
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ['tickets'] });
-            queryClient.invalidateQueries({ queryKey: ['ticket', ticket.id] });
           }}
         />
       )}
-
-    </div>
     </div>
   );
 };

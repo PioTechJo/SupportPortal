@@ -38,6 +38,7 @@ export interface Tenant {
   logo_url?: string;
   primary_color?: string;
   support_tier: 'standard' | 'premium' | 'enterprise';
+  is_internal?: boolean;
   created_at?: string;
 }
 
@@ -51,15 +52,18 @@ export interface Ticket {
   tenant_id: string;
   created_by: string; // profile_id
   assigned_to: string | null; // agent/admin profile_id
+  assigned_at?: string | null;
   created_at: string;
   updated_at: string;
+  closed_at?: string | null;
   // Resolution details
   resolution_draft?: any;
   resolved_by?: string | null;
   resolution_submitted_at?: string | null;
+  justification_submitted_at?: string | null;
   // Expressive joins:
   creator_name?: string;
-  assignee_name?: string;
+  assigned_to_name?: string;
   customer_name?: string;
   tenant_name?: string;
   status_code?: string;
@@ -77,13 +81,22 @@ export interface Comment {
   content: string;
   is_internal: boolean;
   created_at: string;
+  escalated_team_id?: string | null;
+  escalated_developer_name?: string | null;
+  escalation_returned_at?: string | null;
+  teams?: any;
 }
 
 export interface Product {
   id: string;
   name: string;
+  product_name?: string;
   product_code?: string;
   description?: string;
+  icon?: string;
+  color?: string;
+  display_order?: number;
+  is_active?: boolean;
   created_at?: string;
 }
 
