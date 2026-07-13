@@ -7,11 +7,14 @@ import {
 import { OrganizationUsersTab } from './OrganizationUsersTab';
 import { AddOrganizationUserModal } from './AddOrganizationUserModal';
 import { OrganizationProductsTab } from './OrganizationProductsTab';
+import { OrganizationContractsTab } from './OrganizationContractsTab';
+import { OrganizationOverviewTab } from './OrganizationOverviewTab';
+import { OrganizationAuditTab } from './OrganizationAuditTab';
 
 interface OrganizationDetailsProps {
   organization: Tenant;
   users: Profile[];
-  initialTab?: 'overview' | 'users' | 'products';
+  initialTab?: 'overview' | 'users' | 'products' | 'contracts' | 'audit';
   onBack: () => void;
   onEdit: (org: Tenant) => void;
   onDeactivate?: (org: Tenant) => void;
@@ -29,7 +32,7 @@ export const OrganizationDetails: React.FC<OrganizationDetailsProps> = ({
   onRefresh,
   onUserClick
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'products'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'products' | 'contracts' | 'audit'>(initialTab);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
 
   React.useEffect(() => {
@@ -172,14 +175,14 @@ export const OrganizationDetails: React.FC<OrganizationDetailsProps> = ({
         {/* Tabs & Content */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
           <div className="flex border-b border-slate-200 px-2 pt-2 bg-slate-50/50">
-            {['overview', 'users', 'products', 'tickets', 'knowledge base', 'audit', 'settings'].map((tab) => (
+            {['overview', 'users', 'products', 'contracts', 'audit'].map((tab) => (
               <button
                 key={tab}
-                onClick={() => ['overview', 'users', 'products'].includes(tab) && setActiveTab(tab as any)}
+                onClick={() => ['overview', 'users', 'products', 'contracts', 'audit'].includes(tab) && setActiveTab(tab as any)}
                 className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors capitalize ${
                   activeTab === tab 
                     ? 'border-teal-500 text-teal-700 bg-white' 
-                    : ['overview', 'users', 'products'].includes(tab)
+                    : ['overview', 'users', 'products', 'contracts', 'audit'].includes(tab)
                       ? 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/50'
                       : 'border-transparent text-slate-300 cursor-not-allowed'
                 }`}
@@ -191,13 +194,7 @@ export const OrganizationDetails: React.FC<OrganizationDetailsProps> = ({
 
           <div className="p-6 flex-1 bg-white">
             {activeTab === 'overview' && (
-              <div className="flex flex-col items-center justify-center h-full text-slate-500 space-y-4 py-12">
-                <Building2 size={48} className="text-slate-200" />
-                <h3 className="text-xl font-bold text-slate-700">Organization Overview</h3>
-                <p className="max-w-md text-center text-sm">
-                  This dashboard will provide a high-level summary of the organization's health, SLA compliance, and recent activity.
-                </p>
-              </div>
+              <OrganizationOverviewTab organization={organization} totalUsers={orgUsers.length} />
             )}
 
             {activeTab === 'users' && (
@@ -212,6 +209,14 @@ export const OrganizationDetails: React.FC<OrganizationDetailsProps> = ({
 
             {activeTab === 'products' && (
               <OrganizationProductsTab organization={organization} />
+            )}
+
+            {activeTab === 'contracts' && (
+              <OrganizationContractsTab organization={organization} />
+            )}
+
+            {activeTab === 'audit' && (
+              <OrganizationAuditTab organization={organization} />
             )}
           </div>
         </div>

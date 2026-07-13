@@ -56,7 +56,7 @@ export default function Users() {
     });
   };
 
-  const isManager = currentUser?.role_name === 'SUPPORT_MANAGER';
+  const isManager = currentUser?.role_code === 'SUPPORT_MANAGER';
 
   if (selectedUser) {
     return (
@@ -104,10 +104,14 @@ export default function Users() {
                 className="border border-gray-200 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="ALL">All Roles</option>
-                <option value="CEO">CEO</option>
-                <option value="SUPPORT_MANAGER">SUPPORT_MANAGER</option>
-                <option value="SUPPORT_OFFICER">SUPPORT_OFFICER</option>
-                <option value="BANK_USER">BANK_USER</option>
+                <option value="Ceo">CEO</option>
+                <option value="Support Manager">Support Manager</option>
+                <option value="Support Officer">Support Officer</option>
+                <option value="Support Engineer">Support Engineer</option>
+                <option value="Team Member">Team Member</option>
+                <option value="Bank User">Bank User</option>
+                <option value="Bank Manager">Bank Manager</option>
+                <option value="Bank Admin">Bank Admin</option>
               </select>
               <button 
                 onClick={fetchUsers} 

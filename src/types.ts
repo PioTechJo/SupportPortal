@@ -7,6 +7,7 @@ export interface Profile {
   name?: string;
   role?: string; // Legacy
   role_id?: string;
+  role_code?: string;
   role_name?: UserRole | string;
   tenant_id: string | null; // Legacy
   customer_id?: string | null;
@@ -61,6 +62,7 @@ export interface Ticket {
   resolved_by?: string | null;
   resolution_submitted_at?: string | null;
   justification_submitted_at?: string | null;
+  chatbot_transcript?: { role: 'user' | 'assistant', content: string }[] | null;
   // Expressive joins:
   creator_name?: string;
   assigned_to_name?: string;

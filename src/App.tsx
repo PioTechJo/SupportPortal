@@ -13,11 +13,15 @@ import { Tickets } from './pages/Tickets';
 import { TicketDetail } from './pages/TicketDetail';
 import { Organizations } from './pages/Organizations';
 import { ReportBuilder } from './pages/ReportBuilder';
+import { AgingReport } from './pages/admin/AgingReport';
 import ResolutionApprovals from './pages/ResolutionApprovals';
 import Users from './pages/Users';
 import { Unauthorized } from './pages/Unauthorized';
 import { RecommendationRulesManager } from './pages/admin/RecommendationRulesManager';
 import { DiagnosticBuilder } from './pages/admin/DiagnosticBuilder';
+import { SLAConfiguration } from './pages/admin/SLAConfiguration';
+import { EmailLogs } from './pages/admin/EmailLogs';
+import { DataAssistant } from './pages/admin/DataAssistant';
 
 // Create a React Query client
 const queryClient = new QueryClient({
@@ -33,11 +37,11 @@ const queryClient = new QueryClient({
 const RoleBasedRedirect: React.FC = () => {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  const roleNameUpper = user.role_name?.toUpperCase() || '';
-  if (roleNameUpper === 'ADMIN' || roleNameUpper === 'ADMINISTRATOR' || roleNameUpper === 'SYS_ADMIN' || roleNameUpper === 'CEO' || roleNameUpper === 'SUPPORT_MANAGER') {
+  const roleCodeUpper = user.role_code?.toUpperCase() || '';
+  if (['ADMIN', 'ADMINISTRATOR', 'SYS_ADMIN', 'CEO', 'SUPPORT_MANAGER'].includes(roleCodeUpper)) {
     return <Navigate to="/admin/overview" replace />;
   }
-  if (roleNameUpper === 'AGENT' || roleNameUpper === 'SUPPORT_OFFICER' || roleNameUpper === 'SUPPORT_ENGINEER' || roleNameUpper === 'TEAM_LEAD') {
+  if (['AGENT', 'SUPPORT_OFFICER', 'SUPPORT_ENGINEER', 'TEAM_LEAD', 'TEAM_MEMBER'].includes(roleCodeUpper)) {
     return <Navigate to="/agent/dashboard" replace />;
   }
   return <Navigate to="/portal/dashboard" replace />;
@@ -64,19 +68,19 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: strin
   }
 
   // Support match with any compatible set of roles
-  if (allowedRoles && !allowedRoles.includes(user.role_name)) {
+  if (allowedRoles && !allowedRoles.includes(user.role_code as any) && !allowedRoles.includes(user.role_name as any)) {
     // Gracefully handle mapping check
     const isMatched = allowedRoles.some(role => {
       const roleUpper = role.toUpperCase();
-      const userRoleUpper = user.role_name?.toUpperCase() || '';
-      if (roleUpper === 'ADMIN' || roleUpper === 'ADMINISTRATOR' || roleUpper === 'CEO' || roleUpper === 'SUPPORT_MANAGER' || roleUpper === 'SYS_ADMIN') {
-        return userRoleUpper === 'ADMIN' || userRoleUpper === 'ADMINISTRATOR' || userRoleUpper === 'CEO' || userRoleUpper === 'SUPPORT_MANAGER' || userRoleUpper === 'SYS_ADMIN';
+      const userRoleUpper = user.role_code?.toUpperCase() || '';
+      if (['ADMIN', 'ADMINISTRATOR', 'CEO', 'SUPPORT_MANAGER', 'SYS_ADMIN'].includes(roleUpper)) {
+        return ['ADMIN', 'ADMINISTRATOR', 'CEO', 'SUPPORT_MANAGER', 'SYS_ADMIN'].includes(userRoleUpper);
       }
-      if (roleUpper === 'AGENT' || roleUpper === 'SUPPORT_OFFICER' || roleUpper === 'SUPPORT_ENGINEER' || roleUpper === 'TEAM_LEAD') {
-        return userRoleUpper === 'AGENT' || userRoleUpper === 'SUPPORT_OFFICER' || userRoleUpper === 'SUPPORT_ENGINEER' || userRoleUpper === 'TEAM_LEAD';
+      if (['AGENT', 'SUPPORT_OFFICER', 'SUPPORT_ENGINEER', 'TEAM_LEAD', 'TEAM_MEMBER'].includes(roleUpper)) {
+        return ['AGENT', 'SUPPORT_OFFICER', 'SUPPORT_ENGINEER', 'TEAM_LEAD', 'TEAM_MEMBER'].includes(userRoleUpper);
       }
-      if (roleUpper === 'CLIENT' || roleUpper === 'CAB_USER' || roleUpper === 'BANK_USER') {
-        return userRoleUpper === 'CLIENT' || userRoleUpper === 'CAB_USER' || userRoleUpper === 'BANK_USER';
+      if (['CLIENT', 'CAB_USER', 'BANK_USER', 'BANK_MANAGER', 'BANK_ADMIN'].includes(roleUpper)) {
+        return ['CLIENT', 'CAB_USER', 'BANK_USER', 'BANK_MANAGER', 'BANK_ADMIN'].includes(userRoleUpper);
       }
       return userRoleUpper === roleUpper;
     });
@@ -181,6 +185,22 @@ export default function App() {
                 } 
               />
               <Route 
+                path="/admin/aging-report" 
+                element={
+                  <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER']}>
+                    <AgingReport />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/admin/data-assistant" 
+                element={
+                  <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER']}>
+                    <DataAssistant />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
                 path="/users" 
                 element={
                   <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER', 'SUPPORT_OFFICER']}>
@@ -223,6 +243,18 @@ export default function App() {
               <Route path="/recommendation-rules" element={
                 <ProtectedRoute allowedRoles={['admin', 'administrator']}>
                   <RecommendationRulesManager />
+                </ProtectedRoute>
+              } />
+
+              <Route path="/admin/sla" element={
+                <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER']}>
+                  <SLAConfiguration />
+                </ProtectedRoute>
+              } />
+
+              <Route path="/admin/emails" element={
+                <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER']}>
+                  <EmailLogs />
                 </ProtectedRoute>
               } />
 

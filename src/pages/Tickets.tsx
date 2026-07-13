@@ -19,7 +19,12 @@ import {
   PlayCircle,
   CheckCircle2,
   XCircle,
-  Package
+  Package,
+  Eye,
+  Clock,
+  User,
+  ShieldAlert,
+  MoreHorizontal
 } from 'lucide-react';
 import { TicketCreationWizard } from '../components/ticket-wizard/TicketCreationWizard';
 
@@ -68,9 +73,49 @@ export const Tickets: React.FC = () => {
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [isPriorityOpen, setIsPriorityOpen] = useState(false);
 
-  type SortColumn = 'title' | 'priority' | 'status_code' | 'customer_name' | 'assigned_to_name' | 'created_at';
+  type SortColumn = 'title' | 'priority' | 'status_code' | 'customer_name' | 'assigned_to_name' | 'created_at' | 'sla_due_date';
   const [sortColumn, setSortColumn] = useState<SortColumn>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  const [density, setDensity] = useState<'compact' | 'comfortable'>(() => {
+    return (localStorage.getItem('ticketsTableDensity') as 'compact' | 'comfortable') || 'compact';
+  });
+  useEffect(() => {
+    localStorage.setItem('ticketsTableDensity', density);
+  }, [density]);
+  const cellPadding = density === 'compact' ? 'py-2' : 'py-4';
+
+  const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem('ticketsTableColumnWidths');
+    return saved ? JSON.parse(saved) : {};
+  });
+  useEffect(() => {
+    localStorage.setItem('ticketsTableColumnWidths', JSON.stringify(colWidths));
+  }, [colWidths]);
+
+  const handleResizeStart = (e: React.MouseEvent, columnId: string) => {
+    e.stopPropagation();
+    const startX = e.pageX;
+    const th = (e.target as HTMLElement).closest('th');
+    if (!th) return;
+    const startWidth = th.getBoundingClientRect().width;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.pageX - startX;
+      const newWidth = Math.max(80, startWidth + deltaX);
+      setColWidths(prev => ({ ...prev, [columnId]: newWidth }));
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'default';
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'col-resize';
+  };
 
   useEffect(() => {
     if (isAdmin) {
@@ -270,24 +315,65 @@ export const Tickets: React.FC = () => {
 
   const getStatusDisplay = (statusCode: string) => {
     const s = (statusCode || '').toUpperCase();
-    let color = 'bg-slate-400';
-    let text = 'Open';
     
-    if (s === 'NEW' || s === 'OPEN') { color = 'bg-blue-500'; text = 'New'; }
-    else if (s === 'ASSIGNED') { color = 'bg-purple-500'; text = 'Assigned'; }
-    else if (s === 'INVESTIGATION' || s === 'IN_PROGRESS') { color = 'bg-amber-500'; text = 'In Progress'; }
-    else if (s === 'PENDING_CUSTOMER') { color = 'bg-orange-500'; text = 'Pending Customer'; }
-    else if (s === 'RESOLVED_PENDING_APPROVAL') { color = 'bg-amber-500'; text = 'Pending Approval'; }
-    else if (s === 'APPROVED') { color = 'bg-green-500'; text = 'Approved'; }
-    else if (s === 'RESOLVED') { color = 'bg-green-500'; text = 'Resolved'; }
-    else if (s === 'CLOSED') { color = 'bg-slate-400'; text = 'Closed'; }
+    let Icon = AlertCircle;
+    let colorClass = 'bg-slate-100 text-slate-700 border-slate-200';
+    let text = 'Open';
+
+    if (s === 'NEW' || s === 'OPEN') { 
+      Icon = AlertCircle; 
+      colorClass = 'bg-blue-50 text-blue-700 border-blue-200'; 
+      text = 'New'; 
+    }
+    else if (s === 'ASSIGNED') { 
+      Icon = User; 
+      colorClass = 'bg-purple-50 text-purple-700 border-purple-200'; 
+      text = 'Assigned'; 
+    }
+    else if (s === 'INVESTIGATION' || s === 'IN_PROGRESS') { 
+      Icon = PlayCircle; 
+      colorClass = 'bg-amber-50 text-amber-700 border-amber-200'; 
+      text = 'In Progress'; 
+    }
+    else if (s === 'PENDING_CUSTOMER') { 
+      Icon = Clock; 
+      colorClass = 'bg-orange-50 text-orange-700 border-orange-200'; 
+      text = 'Pending Customer'; 
+    }
+    else if (s === 'RESOLVED_PENDING_APPROVAL') { 
+      Icon = ShieldAlert; 
+      colorClass = 'bg-amber-50 text-amber-700 border-amber-200'; 
+      text = 'Pending Approval'; 
+    }
+    else if (s === 'APPROVED') { 
+      Icon = CheckCircle2; 
+      colorClass = 'bg-green-50 text-green-700 border-green-200'; 
+      text = 'Approved'; 
+    }
+    else if (s === 'RESOLVED') { 
+      Icon = CheckCircle2; 
+      colorClass = 'bg-green-50 text-green-700 border-green-200'; 
+      text = 'Resolved'; 
+    }
+    else if (s === 'CLOSED') { 
+      Icon = XCircle; 
+      colorClass = 'bg-slate-50 text-slate-700 border-slate-200'; 
+      text = 'Closed'; 
+    }
+    else {
+      Icon = MoreHorizontal;
+    }
 
     return (
-      <div className="flex items-center gap-2">
-        <span className={`w-2 h-2 rounded-full ${color}`}></span>
-        <span className="text-slate-700">{text}</span>
+      <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold ${colorClass}`}>
+        <Icon size={14} className="shrink-0" />
+        <span>{text}</span>
       </div>
     );
+  };
+
+  const renderSlaBadge = (ticket: Ticket) => {
+    return <span className="text-slate-400 italic">Not set</span>;
   };
 
   const handleSort = (column: SortColumn) => {
@@ -337,14 +423,14 @@ export const Tickets: React.FC = () => {
               onClick={() => { setViewFilter('all'); setProductFilter('all'); }}
               className={`
                 flex items-center justify-between px-3 py-2 rounded-lg text-[13px] transition-colors w-full text-left
-                ${viewFilter === 'all' && productFilter === 'all' ? 'bg-[#fff5ee] text-[#f97316] font-medium' : 'text-slate-600 hover:bg-slate-100'}
+                ${viewFilter === 'all' && productFilter === 'all' ? 'bg-[#eff6ff] text-[#3B82F6] font-medium' : 'text-slate-600 hover:bg-slate-100'}
               `}
             >
               <div className="flex items-center gap-2">
-                <Inbox size={16} className={viewFilter === 'all' && productFilter === 'all' ? 'text-[#f97316]' : 'text-slate-400'} />
+                <Inbox size={16} className={viewFilter === 'all' && productFilter === 'all' ? 'text-[#3B82F6]' : 'text-slate-400'} />
                 <span>All tickets</span>
               </div>
-              <span className={`text-xs ${viewFilter === 'all' && productFilter === 'all' ? 'text-[#f97316]' : 'text-slate-400'}`}>{allTicketsView.count}</span>
+              <span className={`text-xs ${viewFilter === 'all' && productFilter === 'all' ? 'text-[#3B82F6]' : 'text-slate-400'}`}>{allTicketsView.count}</span>
             </button>
 
             {/* By status */}
@@ -365,14 +451,14 @@ export const Tickets: React.FC = () => {
                     onClick={() => { setViewFilter(view.id); setProductFilter('all'); }}
                     className={`
                       flex items-center justify-between py-1.5 pr-3 pl-8 rounded-lg text-[13px] transition-colors w-full text-left
-                      ${isActive ? 'bg-[#fff5ee] text-[#f97316] font-medium' : 'text-slate-500 hover:bg-slate-100'}
+                      ${isActive ? 'bg-[#eff6ff] text-[#3B82F6] font-medium' : 'text-slate-500 hover:bg-slate-100'}
                     `}
                   >
                     <div className="flex items-center gap-2.5 truncate">
-                      <div className={`w-1 h-1 rounded-full shrink-0 ${isActive ? 'bg-[#f97316]' : 'bg-slate-300'}`} />
+                      <div className={`w-1 h-1 rounded-full shrink-0 ${isActive ? 'bg-[#3B82F6]' : 'bg-slate-300'}`} />
                       <span className="truncate">{view.name}</span>
                     </div>
-                    <span className={`text-xs ${isActive ? 'text-[#f97316]' : 'text-slate-400'}`}>{view.count}</span>
+                    <span className={`text-xs ${isActive ? 'text-[#3B82F6]' : 'text-slate-400'}`}>{view.count}</span>
                   </button>
                 );
               })}
@@ -398,14 +484,14 @@ export const Tickets: React.FC = () => {
                         onClick={() => { setProductFilter(prod.name); setViewFilter('all'); }}
                         className={`
                           flex items-center justify-between py-1.5 pr-3 pl-8 rounded-lg text-[13px] transition-colors w-full text-left
-                          ${isActive ? 'bg-[#fff5ee] text-[#f97316] font-medium' : 'text-slate-500 hover:bg-slate-100'}
+                          ${isActive ? 'bg-[#eff6ff] text-[#3B82F6] font-medium' : 'text-slate-500 hover:bg-slate-100'}
                         `}
                       >
                         <div className="flex items-center gap-2.5 truncate">
-                          <div className={`w-1 h-1 rounded-full shrink-0 ${isActive ? 'bg-[#f97316]' : 'bg-slate-300'}`} />
+                          <div className={`w-1 h-1 rounded-full shrink-0 ${isActive ? 'bg-[#3B82F6]' : 'bg-slate-300'}`} />
                           <span className="truncate">{prod.name}</span>
                         </div>
-                        <span className={`text-xs ${isActive ? 'text-[#f97316]' : 'text-slate-400'}`}>{prod.count}</span>
+                        <span className={`text-xs ${isActive ? 'text-[#3B82F6]' : 'text-slate-400'}`}>{prod.count}</span>
                       </button>
                     );
                   })}
@@ -435,13 +521,13 @@ export const Tickets: React.FC = () => {
                     onClick={() => { setViewFilter(view.id); setProductFilter('all'); }}
                     className={`
                       flex items-center justify-between px-3 py-2 rounded-lg text-[13px] transition-colors w-full text-left
-                      ${isActive ? 'bg-[#fff5ee] text-[#f97316] font-medium' : 'text-slate-600 hover:bg-slate-100'}
+                      ${isActive ? 'bg-[#eff6ff] text-[#3B82F6] font-medium' : 'text-slate-600 hover:bg-slate-100'}
                     `}
                   >
                     <div className="flex items-center gap-2 truncate">
                       <span className="truncate">{view.name}</span>
                     </div>
-                    <span className={`text-xs ${isActive ? 'text-[#f97316]' : 'text-slate-400'}`}>{view.count}</span>
+                    <span className={`text-xs ${isActive ? 'text-[#3B82F6]' : 'text-slate-400'}`}>{view.count}</span>
                   </button>
                 );
               })}
@@ -477,7 +563,7 @@ export const Tickets: React.FC = () => {
                 placeholder="Search tickets..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm w-64 focus:outline-none focus:ring-1 focus:ring-[#f97316]"
+                className="pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm w-64 focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
               />
             </div>
             
@@ -499,7 +585,7 @@ export const Tickets: React.FC = () => {
                     <button 
                       key={val}
                       onClick={() => { setDateRange(val); setIsDateRangeOpen(false); }}
-                      className={`w-full text-left px-4 py-2 text-sm ${dateRange === val ? 'bg-[#fff5ee] text-[#f97316]' : 'text-slate-700 hover:bg-slate-50'}`}
+                      className={`w-full text-left px-4 py-2 text-sm ${dateRange === val ? 'bg-[#eff6ff] text-[#3B82F6]' : 'text-slate-700 hover:bg-slate-50'}`}
                     >
                       {val === 'all' ? 'All time' : val === '7days' ? 'Last 7 days' : 'Last 30 days'}
                     </button>
@@ -526,7 +612,7 @@ export const Tickets: React.FC = () => {
                     <button 
                       key={val}
                       onClick={() => { setPriorityFilter(val); setIsPriorityOpen(false); }}
-                      className={`w-full text-left px-4 py-2 text-sm capitalize ${priorityFilter === val ? 'bg-[#fff5ee] text-[#f97316]' : 'text-slate-700 hover:bg-slate-50'}`}
+                      className={`w-full text-left px-4 py-2 text-sm capitalize ${priorityFilter === val ? 'bg-[#eff6ff] text-[#3B82F6]' : 'text-slate-700 hover:bg-slate-50'}`}
                     >
                       {val === 'all' ? 'All Priorities' : val}
                     </button>
@@ -553,13 +639,13 @@ export const Tickets: React.FC = () => {
                   <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-lg py-1 z-50">
                     <button 
                       onClick={() => { setEngineerFilter('all'); setIsEngineerFilterOpen(false); }}
-                      className={`w-full text-left px-4 py-2 text-sm ${engineerFilter === 'all' ? 'bg-[#fff5ee] text-[#f97316]' : 'text-slate-700 hover:bg-slate-50'}`}
+                      className={`w-full text-left px-4 py-2 text-sm ${engineerFilter === 'all' ? 'bg-[#eff6ff] text-[#3B82F6]' : 'text-slate-700 hover:bg-slate-50'}`}
                     >
                       All Engineers
                     </button>
                     <button 
                       onClick={() => { setEngineerFilter('unassigned'); setIsEngineerFilterOpen(false); }}
-                      className={`w-full text-left px-4 py-2 text-sm ${engineerFilter === 'unassigned' ? 'bg-[#fff5ee] text-[#f97316]' : 'text-slate-700 hover:bg-slate-50'}`}
+                      className={`w-full text-left px-4 py-2 text-sm ${engineerFilter === 'unassigned' ? 'bg-[#eff6ff] text-[#3B82F6]' : 'text-slate-700 hover:bg-slate-50'}`}
                     >
                       Unassigned
                     </button>
@@ -569,7 +655,7 @@ export const Tickets: React.FC = () => {
                         <button
                           key={eng.id}
                           onClick={() => { setEngineerFilter(eng.id); setIsEngineerFilterOpen(false); }}
-                          className={`w-full text-left px-4 py-2 text-sm ${engineerFilter === eng.id ? 'bg-[#fff5ee] text-[#f97316]' : 'text-slate-700 hover:bg-slate-50'}`}
+                          className={`w-full text-left px-4 py-2 text-sm ${engineerFilter === eng.id ? 'bg-[#eff6ff] text-[#3B82F6]' : 'text-slate-700 hover:bg-slate-50'}`}
                         >
                           <div className="font-medium truncate">{eng.full_name}</div>
                           <div className="text-xs text-slate-400 truncate">{eng.email}</div>
@@ -592,9 +678,25 @@ export const Tickets: React.FC = () => {
               </button>
             )}
             
+            {/* Density Toggle */}
+            <div className="flex items-center bg-white border border-slate-200 rounded-lg p-0.5 ml-2">
+              <button
+                onClick={() => setDensity('compact')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${density === 'compact' ? 'bg-[#eff6ff] text-[#3B82F6]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}
+              >
+                Compact
+              </button>
+              <button
+                onClick={() => setDensity('comfortable')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${density === 'comfortable' ? 'bg-[#eff6ff] text-[#3B82F6]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}
+              >
+                Comfortable
+              </button>
+            </div>
+            
             <button 
               onClick={handleOpenCreateModal}
-              className="flex items-center gap-2 px-4 py-2 bg-[#f97316] hover:bg-[#ea580c] text-white rounded-lg text-sm font-medium transition-colors ml-2 shadow-sm"
+              className="flex items-center gap-2 px-4 py-2 bg-[#3B82F6] hover:bg-[#2563eb] text-white rounded-lg text-sm font-medium transition-colors ml-2 shadow-sm"
             >
               <Plus size={16} />
               Create ticket
@@ -607,9 +709,9 @@ export const Tickets: React.FC = () => {
           <div className="overflow-x-auto flex-1">
             <table className="w-full text-left border-collapse min-w-[800px]">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/50">
+                <tr className="bg-[#3B82F6] border-b border-[#2563eb]">
                   {viewFilter === 'pending_approval' && (
-                    <th className="px-4 py-4 w-12 text-center">
+                    <th className={`px-4 ${cellPadding} w-12 text-center relative`} style={{ width: colWidths['checkbox'] ? `${colWidths['checkbox']}px` : undefined }}>
                       <input 
                         type="checkbox" 
                         checked={selectedTickets.length === filteredTickets.length && filteredTickets.length > 0}
@@ -620,27 +722,51 @@ export const Tickets: React.FC = () => {
                             setSelectedTickets([]);
                           }
                         }}
-                        className="rounded border-slate-300 text-[#f97316] focus:ring-[#f97316]"
+                        className="rounded border-white/40 bg-white/20 text-[#3B82F6] focus:ring-white focus:ring-offset-[#3B82F6] focus:ring-offset-2"
                       />
+                      <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-white/30 z-10" onMouseDown={(e) => handleResizeStart(e, 'checkbox')} />
                     </th>
                   )}
-                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('title')}>Subject <SortIcon column="title" /></th>
-                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider w-28 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('priority')}>Priority <SortIcon column="priority" /></th>
-                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider w-40 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('status_code')}>Status <SortIcon column="status_code" /></th>
-                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider w-36 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('customer_name')}>Customer <SortIcon column="customer_name" /></th>
-                  {isAdmin && <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider w-48 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('assigned_to_name')}>Assigned To <SortIcon column="assigned_to_name" /></th>}
-                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider w-32 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('created_at')}>Created <SortIcon column="created_at" /></th>
-                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider w-20 text-right"></th>
+                  <th className={`px-6 ${cellPadding} text-xs font-semibold text-white uppercase tracking-wider cursor-pointer hover:bg-[#2563eb] transition-colors relative group/th`} style={{ width: colWidths['title'] ? `${colWidths['title']}px` : undefined }} onClick={() => handleSort('title')}>
+                    Subject <SortIcon column="title" />
+                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-white/30 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'title'); }} />
+                  </th>
+                  <th className={`px-6 ${cellPadding} text-xs font-semibold text-white uppercase tracking-wider cursor-pointer hover:bg-[#2563eb] transition-colors relative group/th`} style={{ width: colWidths['priority'] ? `${colWidths['priority']}px` : '112px' }} onClick={() => handleSort('priority')}>
+                    Priority <SortIcon column="priority" />
+                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-white/30 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'priority'); }} />
+                  </th>
+                  <th className={`px-6 ${cellPadding} text-xs font-semibold text-white uppercase tracking-wider cursor-pointer hover:bg-[#2563eb] transition-colors relative group/th`} style={{ width: colWidths['status_code'] ? `${colWidths['status_code']}px` : '160px' }} onClick={() => handleSort('status_code')}>
+                    Status <SortIcon column="status_code" />
+                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-white/30 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'status_code'); }} />
+                  </th>
+                  <th className={`px-6 ${cellPadding} text-xs font-semibold text-white uppercase tracking-wider cursor-pointer hover:bg-[#2563eb] transition-colors relative group/th`} style={{ width: colWidths['customer_name'] ? `${colWidths['customer_name']}px` : '144px' }} onClick={() => handleSort('customer_name')}>
+                    Customer <SortIcon column="customer_name" />
+                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-white/30 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'customer_name'); }} />
+                  </th>
+                  {isAdmin && <th className={`px-6 ${cellPadding} text-xs font-semibold text-white uppercase tracking-wider cursor-pointer hover:bg-[#2563eb] transition-colors relative group/th`} style={{ width: colWidths['assigned_to_name'] ? `${colWidths['assigned_to_name']}px` : '192px' }} onClick={() => handleSort('assigned_to_name')}>
+                    Assigned To <SortIcon column="assigned_to_name" />
+                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-white/30 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'assigned_to_name'); }} />
+                  </th>}
+                  <th className={`px-6 ${cellPadding} text-xs font-semibold text-white uppercase tracking-wider cursor-pointer hover:bg-[#2563eb] transition-colors relative group/th`} style={{ width: colWidths['created_at'] ? `${colWidths['created_at']}px` : '128px' }} onClick={() => handleSort('created_at')}>
+                    Created <SortIcon column="created_at" />
+                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-white/30 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'created_at'); }} />
+                  </th>
+                  <th className={`px-6 ${cellPadding} text-xs font-semibold text-white uppercase tracking-wider cursor-pointer hover:bg-[#2563eb] transition-colors relative group/th`} style={{ width: colWidths['sla_due_date'] ? `${colWidths['sla_due_date']}px` : '144px' }} onClick={() => handleSort('sla_due_date')}>
+                    SLA Due <SortIcon column="sla_due_date" />
+                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-white/30 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'sla_due_date'); }} />
+                  </th>
+                  <th className={`px-6 ${cellPadding} text-xs font-semibold text-white uppercase tracking-wider text-right relative group/th`} style={{ width: colWidths['action'] ? `${colWidths['action']}px` : '80px' }}>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={viewFilter === 'pending_approval' ? (isAdmin ? 8 : 7) : (isAdmin ? 7 : 6)} className="px-6 py-12 text-center text-slate-400">Loading tickets...</td>
+                    <td colSpan={viewFilter === 'pending_approval' ? (isAdmin ? 9 : 8) : (isAdmin ? 8 : 7)} className={`px-6 py-12 ${cellPadding} text-center text-slate-400`}>Loading tickets...</td>
                   </tr>
                 ) : sortedTickets.length === 0 ? (
                   <tr>
-                    <td colSpan={viewFilter === 'pending_approval' ? (isAdmin ? 8 : 7) : (isAdmin ? 7 : 6)} className="px-6 py-12 text-center text-slate-400">No tickets found.</td>
+                    <td colSpan={viewFilter === 'pending_approval' ? (isAdmin ? 9 : 8) : (isAdmin ? 8 : 7)} className={`px-6 py-12 ${cellPadding} text-center text-slate-400`}>No tickets found.</td>
                   </tr>
                 ) : (
                   sortedTickets.map(ticket => (
@@ -651,7 +777,7 @@ export const Tickets: React.FC = () => {
                       title="Double-click to open ticket"
                     >
                       {viewFilter === 'pending_approval' && (
-                        <td className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                        <td className={`px-4 ${cellPadding} text-center`} onClick={(e) => e.stopPropagation()}>
                           <input 
                             type="checkbox" 
                             checked={selectedTickets.includes(ticket.id)}
@@ -662,27 +788,27 @@ export const Tickets: React.FC = () => {
                                 setSelectedTickets(selectedTickets.filter(id => id !== ticket.id));
                               }
                             }}
-                            className="rounded border-slate-300 text-[#f97316] focus:ring-[#f97316]"
+                            className="rounded border-slate-300 text-[#3B82F6] focus:ring-[#3B82F6]"
                           />
                         </td>
                       )}
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-semibold text-slate-900 group-hover:text-[#f97316] transition-colors line-clamp-1">{ticket.title}</div>
+                      <td className={`px-6 ${cellPadding}`}>
+                        <div className="text-sm font-semibold text-slate-900 group-hover:text-[#3B82F6] transition-colors line-clamp-1">{ticket.title}</div>
                         <div className="text-xs text-slate-500 mt-1 line-clamp-1">{ticket.product_name} • {ticket.category}</div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className={`px-6 ${cellPadding}`}>
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${getPriorityStyle(ticket.priority)}`}>
                           {ticket.priority || 'Medium'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-sm font-medium">
+                      <td className={`px-6 ${cellPadding} text-sm font-medium`}>
                         {getStatusDisplay(ticket.status_code as string)}
                       </td>
-                      <td className="px-6 py-4 text-sm text-slate-600 truncate max-w-[120px]">
+                      <td className={`px-6 ${cellPadding} text-sm text-slate-600 truncate max-w-[120px]`}>
                         {ticket.customer_name || 'N/A'}
                       </td>
                       {isAdmin && (
-                        <td className="px-6 py-4">
+                        <td className={`px-6 ${cellPadding}`}>
                           <div className="flex items-center gap-2">
                             {ticket.assigned_to_name ? (
                               <>
@@ -699,18 +825,22 @@ export const Tickets: React.FC = () => {
                           </div>
                         </td>
                       )}
-                      <td className="px-6 py-4 text-sm text-slate-500 whitespace-nowrap">
+                      <td className={`px-6 ${cellPadding} text-sm text-slate-500 whitespace-nowrap`}>
                         {new Date(ticket.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className={`px-6 ${cellPadding} text-sm whitespace-nowrap`}>
+                        {renderSlaBadge(ticket)}
+                      </td>
+                      <td className={`px-6 ${cellPadding} text-right`}>
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();
                             navigate(`/tickets/${ticket.id}`);
                           }}
-                          className="text-[#f97316] hover:text-[#ea580c] text-sm font-medium transition-colors bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100"
+                          className="text-[#3B82F6] hover:text-[#2563eb] transition-colors bg-blue-50 hover:bg-blue-100 p-2 rounded-lg opacity-0 group-hover:opacity-100 inline-flex items-center justify-center border border-blue-100 hover:border-blue-200 shadow-sm"
+                          title="Open ticket"
                         >
-                          Open
+                          <Eye size={18} />
                         </button>
                       </td>
                     </tr>

@@ -34,7 +34,7 @@ export const Organizations: React.FC = () => {
   // Guard redirection mechanism
   useEffect(() => {
     if (loggedInUser) {
-      const roleUp = loggedInUser.role_name?.toUpperCase() || '';
+      const roleUp = loggedInUser.role_code?.toUpperCase() || '';
       const isAuthorized = roleUp === 'ADMIN' || roleUp === 'ADMINISTRATOR' || roleUp === 'SYS_ADMIN' || roleUp === 'CEO' || roleUp === 'SUPPORT_MANAGER';
       if (!isAuthorized) {
         navigate('/unauthorized', { replace: true });

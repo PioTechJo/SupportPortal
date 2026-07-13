@@ -104,8 +104,11 @@ export const OptionsPanel: React.FC<OptionsPanelProps> = ({ questionId, question
               className="p-3 rounded-lg border border-transparent hover:border-slate-200 hover:bg-slate-50 transition flex justify-between items-center group"
             >
               <div className="flex-1">
-                <div className="font-medium text-sm text-slate-700">
+                <div className="font-medium text-sm text-slate-700 flex items-center gap-2">
                   {opt.option_label}
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${opt.point_value >= 10 ? 'bg-red-100 text-red-700' : opt.point_value === 5 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                    {opt.point_value || 0} pts
+                  </span>
                 </div>
                 <div className="text-xs text-slate-400 flex items-center gap-2 mt-1">
                   <span className="font-mono text-[10px] bg-slate-100 px-1 rounded">Val: {opt.option_value}</span>

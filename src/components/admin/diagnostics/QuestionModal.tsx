@@ -12,8 +12,9 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ categoryId, questi
   const [questionText, setQuestionText] = useState('');
   const [questionType, setQuestionType] = useState('single_choice');
   const [displayOrder, setDisplayOrder] = useState<number>(0);
-  const [newOptions, setNewOptions] = useState<string[]>([]);
+  const [newOptions, setNewOptions] = useState<{text: string, point_value: number}[]>([]);
   const [optionInput, setOptionInput] = useState('');
+  const [optionPointValue, setOptionPointValue] = useState<number>(0);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,9 +56,10 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ categoryId, questi
         if (questionType === 'single_choice' && newOptions.length > 0) {
           const optionsPayload = newOptions.map((opt, idx) => ({
             question_id: insertedQuestion.id,
-            option_label: opt,
-            option_value: opt,
-            display_order: idx
+            option_label: opt.text,
+            option_value: opt.text,
+            display_order: idx,
+            point_value: opt.point_value
           }));
           const { error: optError } = await supabase
             .from('ai_question_options')
@@ -75,8 +77,9 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ categoryId, questi
 
   const handleAddOption = () => {
     if (optionInput.trim()) {
-      setNewOptions([...newOptions, optionInput.trim()]);
+      setNewOptions([...newOptions, { text: optionInput.trim(), point_value: optionPointValue }]);
       setOptionInput('');
+      setOptionPointValue(0);
     }
   };
 
@@ -142,6 +145,15 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ categoryId, questi
                   className="flex-1 rounded-[8px] border-slate-200 focus:border-[#f97316] focus:ring-[#f97316] text-[13px] shadow-sm py-1.5 px-3"
                   placeholder="e.g. Yes"
                 />
+                <select
+                  value={optionPointValue}
+                  onChange={e => setOptionPointValue(parseInt(e.target.value))}
+                  className="rounded-[8px] border-slate-200 focus:border-[#f97316] focus:ring-[#f97316] text-[13px] shadow-sm py-1.5 px-2"
+                >
+                  <option value={0}>Low (0)</option>
+                  <option value={5}>Medium (5)</option>
+                  <option value={10}>High (10)</option>
+                </select>
                 <button 
                   type="button" 
                   onClick={handleAddOption}
@@ -156,11 +168,14 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ categoryId, questi
                 <div className="flex flex-wrap gap-2 mt-2">
                   {newOptions.map((opt, idx) => (
                     <div key={idx} className="flex items-center gap-1.5 bg-white border border-slate-200 px-2.5 py-1 rounded-md shadow-sm">
-                      <span className="text-[13px] text-slate-700">{opt}</span>
+                      <span className="text-[13px] text-slate-700">{opt.text}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${opt.point_value >= 10 ? 'bg-red-100 text-red-700' : opt.point_value === 5 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                        {opt.point_value || 0} pts
+                      </span>
                       <button 
                         type="button" 
                         onClick={() => handleRemoveOption(idx)}
-                        className="text-slate-400 hover:text-red-500 flex items-center justify-center rounded-sm"
+                        className="text-slate-400 hover:text-red-500 flex items-center justify-center rounded-sm ml-1"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                       </button>

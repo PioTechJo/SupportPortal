@@ -38,7 +38,7 @@ import {
   List
 } from 'lucide-react';
 
-const COLORS = ['#f97316', '#3b82f6', '#6366f1', '#14b8a6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981'];
+const COLORS = ['#3B82F6', '#3b82f6', '#6366f1', '#14b8a6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981'];
 
 const MultiSelect = ({ options, selectedValues, onChange, placeholder }: { options: {id: string, name: string}[], selectedValues: string[], onChange: (vals: string[]) => void, placeholder: string }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -54,7 +54,7 @@ const MultiSelect = ({ options, selectedValues, onChange, placeholder }: { optio
     <div className="relative">
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-orange-500 text-slate-900 flex items-center gap-2 max-w-[170px]"
+        className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900 flex items-center gap-2 max-w-[170px]"
       >
         <span className="truncate flex-1 text-left">
           {selectedValues.length === 0 ? placeholder : `${selectedValues.length} Selected`}
@@ -70,7 +70,7 @@ const MultiSelect = ({ options, selectedValues, onChange, placeholder }: { optio
               onClick={() => toggle(opt.id)}
               className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 text-slate-700 hover:bg-slate-50 transition-colors"
             >
-              <div className={`w-3 h-3 rounded flex items-center justify-center shrink-0 border ${selectedValues.includes(opt.id) ? 'bg-orange-500 border-orange-500 text-white' : 'border-slate-300'}`}>
+              <div className={`w-3 h-3 rounded flex items-center justify-center shrink-0 border ${selectedValues.includes(opt.id) ? 'bg-blue-500 border-blue-500 text-white' : 'border-slate-300'}`}>
                 {selectedValues.includes(opt.id) && <Check size={10} />}
               </div>
               <span className="truncate">{opt.name}</span>
@@ -106,7 +106,7 @@ export const AdminAnalytics: React.FC = () => {
   const { tenants } = useTenant();
 
   // Guard routing if not authorized
-  const userRoleUp = user?.role_name?.toUpperCase() || '';
+  const userRoleUp = user?.role_code?.toUpperCase() || '';
   if (!user || !['ADMIN', 'ADMINISTRATOR', 'SYS_ADMIN', 'CEO', 'SUPPORT_MANAGER'].includes(userRoleUp)) {
     return <Navigate to="/unauthorized" replace />;
   }
@@ -437,7 +437,7 @@ export const AdminAnalytics: React.FC = () => {
           </div>
 
           {/* Date range pickers */}
-          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1 focus-within:ring-1 focus-within:ring-orange-500">
+          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1 focus-within:ring-1 focus-within:ring-blue-500">
             <input 
               type="date"
               value={fromDate}
@@ -472,7 +472,7 @@ export const AdminAnalytics: React.FC = () => {
           {/* Export to CSV trigger */}
           <button
             onClick={handleExportCSV}
-            className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white font-semibold px-3.5 py-1.5 rounded-lg text-xs transition shadow-sm cursor-pointer"
+            className="flex items-center gap-1.5 bg-blue-500 hover:bg-blue-600 text-white font-semibold px-3.5 py-1.5 rounded-lg text-xs transition shadow-sm cursor-pointer"
           >
             <FileSpreadsheet size={13} />
             Export CSV
@@ -563,7 +563,7 @@ export const AdminAnalytics: React.FC = () => {
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="#64748b" />
                   <YAxis tick={{ fontSize: 11 }} stroke="#64748b" />
                   <Tooltip wrapperStyle={{ fontSize: 12, borderRadius: '8px' }} />
-                  <Bar dataKey="count" fill="#f97316" radius={[4, 4, 0, 0]} barSize={32} />
+                  <Bar dataKey="count" fill="#3B82F6" radius={[4, 4, 0, 0]} barSize={32} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -795,7 +795,7 @@ export const AdminAnalytics: React.FC = () => {
                 escalationMetrics.rawData.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((esc: any) => (
                   <tr key={esc.id} className="hover:bg-slate-50/50 transition">
                     <td className="py-3 px-6 font-medium">
-                      <Link to={`/tickets/${esc.ticket_id}`} className="text-orange-500 hover:text-orange-600 hover:underline">
+                      <Link to={`/tickets/${esc.ticket_id}`} className="text-blue-500 hover:text-blue-600 hover:underline">
                         TK-{esc.tickets?.ticket_no || esc.ticket_id.slice(0, 8).toUpperCase()}
                       </Link>
                     </td>

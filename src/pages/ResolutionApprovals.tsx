@@ -134,7 +134,7 @@ export default function ResolutionApprovals() {
   // Filter criteria: Status = 'RESOLVED_PENDING_APPROVAL'
   const pendingTickets = tickets.filter(t => t.status_code === 'RESOLVED_PENDING_APPROVAL');
 
-  const uRoleUp = user?.role_name?.toUpperCase() || '';
+  const uRoleUp = user?.role_code?.toUpperCase() || '';
   const isGlobalAdmin = ['ADMIN', 'ADMINISTRATOR', 'SYS_ADMIN', 'CEO', 'SUPPORT_MANAGER'].includes(uRoleUp);
 
   // Filter further: manager_id of the assigned agent = current_user.id

@@ -46,12 +46,14 @@ const AVAILABLE_FIELDS: FieldDef[] = [
   { id: 'assigned_to_name', label: 'Assigned To (Engineer)', category: 'Relations' },
   
   // Dates
-  { id: 'created_at', label: 'Created Date', category: 'Dates' },
+  { id: 'created_at', label: 'Start Date', category: 'Dates' },
   { id: 'assigned_at', label: 'Assigned Date', category: 'Dates' },
   { id: 'resolution_approved_at', label: 'Approved Date', category: 'Dates' },
+  { id: 'closed_at', label: 'End Date', category: 'Dates' },
 
   // Computed Metrics
-  { id: 'time_open', label: 'Duration to Close', category: 'Computed Metrics' },
+  { id: 'duration_computed', label: 'Duration', category: 'Computed Metrics' },
+  { id: 'time_open', label: 'Duration to Close (Legacy)', category: 'Computed Metrics' },
   { id: 'escalated', label: 'Escalated', category: 'Computed Metrics' },
 ];
 
@@ -84,6 +86,21 @@ export const ReportBuilder: React.FC = () => {
   const isLoading = ticketsLoading || escLoading;
 
   const extractValue = (ticket: any, fieldId: string) => {
+    if (fieldId === 'created_at') return ticket.created_at ? new Date(ticket.created_at).toLocaleString() : '';
+    if (fieldId === 'closed_at') return ticket.closed_at ? new Date(ticket.closed_at).toLocaleString() : 'Still Open';
+    
+    if (fieldId === 'duration_computed') {
+      if (!ticket.created_at) return '';
+      const created = new Date(ticket.created_at).getTime();
+      if (ticket.closed_at) {
+        const end = new Date(ticket.closed_at).getTime();
+        return formatDuration(end - created);
+      } else {
+        const end = Date.now();
+        return `Ongoing (${formatDuration(end - created)} so far)`;
+      }
+    }
+
     if (fieldId === 'time_open') {
       const code = (ticket.status_code || '').toUpperCase();
       const isResolved = ['RESOLVED', 'CLOSED', 'APPROVED'].includes(code) || ['resolved', 'closed'].includes(ticket.status);
@@ -243,13 +260,13 @@ export const ReportBuilder: React.FC = () => {
           <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
             <button
               onClick={() => switchMode('group')}
-              className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors ${reportMode === 'group' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors ${reportMode === 'group' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
               Group & Count
             </button>
             <button
               onClick={() => switchMode('list')}
-              className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors ${reportMode === 'list' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors ${reportMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
               Detailed List
             </button>
@@ -257,7 +274,7 @@ export const ReportBuilder: React.FC = () => {
           {(reportMode === 'group' ? reportData.length > 0 : tickets.length > 0 && draggedFields.length > 0) && (
             <button
               onClick={handleExportCSV}
-              className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white font-semibold px-4 py-2 rounded-lg text-sm transition shadow-sm cursor-pointer whitespace-nowrap"
+              className="flex items-center gap-1.5 bg-blue-500 hover:bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg text-sm transition shadow-sm cursor-pointer whitespace-nowrap"
             >
               <FileSpreadsheet size={16} />
               Export CSV
@@ -287,7 +304,7 @@ export const ReportBuilder: React.FC = () => {
                       className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-grab active:cursor-grabbing transition-colors ${
                         draggedFields.some(df => df.id === field.id)
                           ? 'bg-slate-50 border-slate-200 text-slate-400 opacity-60'
-                          : 'bg-white border-slate-200 text-slate-700 hover:border-orange-300 hover:shadow-sm'
+                          : 'bg-white border-slate-200 text-slate-700 hover:border-blue-300 hover:shadow-sm'
                       }`}
                     >
                       <GripVertical size={14} className="text-slate-400 shrink-0" />
@@ -305,7 +322,7 @@ export const ReportBuilder: React.FC = () => {
             onDragOver={handleDragOver}
             onDrop={handleDrop}
             className={`min-h-[120px] bg-white border-2 border-dashed rounded-xl p-6 transition-colors ${
-              draggedFields.length > 0 ? 'border-orange-200 bg-orange-50/30' : 'border-slate-300 hover:border-orange-400 hover:bg-slate-50'
+              draggedFields.length > 0 ? 'border-blue-200 bg-blue-50/30' : 'border-slate-300 hover:border-blue-400 hover:bg-slate-50'
             }`}
           >
             <h3 className="font-bold text-slate-800 text-sm mb-4">
@@ -324,11 +341,11 @@ export const ReportBuilder: React.FC = () => {
                 {draggedFields.map((field, index) => (
                   <div key={field.id} className="flex items-center gap-2">
                     {index > 0 && <span className="text-slate-400 font-semibold mx-1">+</span>}
-                    <div className="flex items-center gap-2 bg-orange-500 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-sm">
+                    <div className="flex items-center gap-2 bg-blue-500 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-sm">
                       {field.label}
                       <button 
                         onClick={() => removeField(field.id)}
-                        className="hover:bg-orange-600 rounded-full p-0.5 transition-colors"
+                        className="hover:bg-blue-600 rounded-full p-0.5 transition-colors"
                       >
                         <X size={14} />
                       </button>
@@ -345,7 +362,7 @@ export const ReportBuilder: React.FC = () => {
                 <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs h-[350px]">
                   {isLoading ? (
                     <div className="h-full flex items-center justify-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500" />
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
                     </div>
                   ) : reportData.length === 0 ? (
                     <div className="h-full flex items-center justify-center text-slate-400 text-sm">No data available for the selected groupings.</div>
@@ -365,7 +382,7 @@ export const ReportBuilder: React.FC = () => {
                           wrapperStyle={{ fontSize: 12, borderRadius: '8px' }} 
                           cursor={{ fill: '#f8fafc' }}
                         />
-                        <Bar dataKey="ticketCount" name="Tickets" fill="#f97316" radius={[4, 4, 0, 0]} barSize={40} />
+                        <Bar dataKey="ticketCount" name="Tickets" fill="#3B82F6" radius={[4, 4, 0, 0]} barSize={40} />
                       </BarChart>
                     </ResponsiveContainer>
                   )}
@@ -386,7 +403,7 @@ export const ReportBuilder: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {isLoading ? (
-                        <tr><td colSpan={draggedFields.length + (reportMode === 'group' ? 1 : 1)} className="py-8 text-center"><div className="animate-spin inline-block rounded-full h-6 w-6 border-b-2 border-orange-500 mx-auto"></div></td></tr>
+                        <tr><td colSpan={draggedFields.length + (reportMode === 'group' ? 1 : 1)} className="py-8 text-center"><div className="animate-spin inline-block rounded-full h-6 w-6 border-b-2 border-blue-500 mx-auto"></div></td></tr>
                       ) : reportMode === 'group' ? (
                         reportData.map((row: any, idx: number) => (
                           <tr key={idx} className="hover:bg-slate-50/50 transition">
@@ -395,7 +412,7 @@ export const ReportBuilder: React.FC = () => {
                                 {row[f.id]}
                               </td>
                             ))}
-                            <td className="py-3 px-4 text-center font-bold text-orange-600 border-l border-slate-100 bg-orange-50/30">
+                            <td className="py-3 px-4 text-center font-bold text-blue-600 border-l border-slate-100 bg-blue-50/30">
                               {row.ticketCount}
                             </td>
                           </tr>
@@ -404,7 +421,7 @@ export const ReportBuilder: React.FC = () => {
                         tickets.map((ticket: any) => (
                           <tr key={ticket.id} className="hover:bg-slate-50/50 transition">
                             <td className="py-3 px-4 font-medium">
-                              <Link to={`/tickets/${ticket.id}`} className="text-orange-500 hover:underline">
+                              <Link to={`/tickets/${ticket.id}`} className="text-blue-500 hover:underline">
                                 TK-{ticket.ticket_no || ticket.id.slice(0, 8).toUpperCase()}
                               </Link>
                             </td>

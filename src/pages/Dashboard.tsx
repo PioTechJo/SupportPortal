@@ -70,7 +70,7 @@ export const Dashboard: React.FC = () => {
             Ahlan, {user?.full_name}!
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            {user?.role_name === 'client' 
+            {user?.role_code === 'client' 
               ? `Authorized coordinator for Saudi bank settlements & software channels.` 
               : `Admin console of PIO-TECH active support queue.`}
           </p>

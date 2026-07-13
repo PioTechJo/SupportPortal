@@ -12,6 +12,7 @@ export const OptionModal: React.FC<OptionModalProps> = ({ questionId, option, on
   const [optionLabel, setOptionLabel] = useState('');
   const [optionValue, setOptionValue] = useState('');
   const [displayOrder, setDisplayOrder] = useState<number>(0);
+  const [pointValue, setPointValue] = useState<number>(0);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,6 +21,7 @@ export const OptionModal: React.FC<OptionModalProps> = ({ questionId, option, on
       setOptionLabel(option.option_label || '');
       setOptionValue(option.option_value || '');
       setDisplayOrder(option.display_order || 0);
+      setPointValue(option.point_value || 0);
     }
   }, [option]);
 
@@ -41,7 +43,8 @@ export const OptionModal: React.FC<OptionModalProps> = ({ questionId, option, on
         question_id: questionId,
         option_label: optionLabel,
         option_value: optionValue || optionLabel, // fallback to label
-        display_order: displayOrder
+        display_order: displayOrder,
+        point_value: pointValue
       };
 
       if (option) {
@@ -111,6 +114,20 @@ export const OptionModal: React.FC<OptionModalProps> = ({ questionId, option, on
               onChange={e => setDisplayOrder(parseInt(e.target.value))}
               className="w-full rounded-md border-slate-300 focus:border-amber-500 focus:ring-amber-500 text-sm"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Severity Weight *</label>
+            <select
+              required
+              value={pointValue}
+              onChange={e => setPointValue(parseInt(e.target.value))}
+              className="w-full rounded-md border-slate-300 focus:border-amber-500 focus:ring-amber-500 text-sm"
+            >
+              <option value={0}>Low (0 pts)</option>
+              <option value={5}>Medium (5 pts)</option>
+              <option value={10}>High (10 pts)</option>
+            </select>
           </div>
 
           <div className="pt-4 flex justify-end gap-3">

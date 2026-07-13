@@ -9,14 +9,14 @@ export function useTickets() {
 
   // Query: Get all tickets
   const ticketsQuery = useQuery({
-    queryKey: ['tickets', user?.id, user?.tenant_id, user?.customer_id, user?.role_name],
+    queryKey: ['tickets', user?.id, user?.tenant_id, user?.customer_id, user?.role_code],
     queryFn: async () => {
       const allTickets = await api.getTickets();
       if (!user) return [];
 
       // Filter tickets based on user role and tenant
-      const roleUp = user.role_name?.toUpperCase() || '';
-      const isTenantUser = !['ADMIN', 'ADMINISTRATOR', 'SYS_ADMIN', 'AGENT', 'SUPPORT_ENGINEER', 'SUPPORT_OFFICER'].includes(roleUp);
+      const roleUp = user.role_code?.toUpperCase() || '';
+      const isTenantUser = !['ADMIN', 'ADMINISTRATOR', 'SYS_ADMIN', 'CEO', 'SUPPORT_MANAGER', 'AGENT', 'SUPPORT_ENGINEER', 'SUPPORT_OFFICER', 'TEAM_LEAD', 'TEAM_MEMBER'].includes(roleUp);
       if (isTenantUser) {
         const userTenantId = user.tenant_id || user.customer_id;
         if (!userTenantId) return [];
@@ -29,11 +29,11 @@ export function useTickets() {
 
   // Query: Get active tickets count
   const activeTicketsCountQuery = useQuery({
-    queryKey: ['activeTicketsCount', user?.tenant_id, user?.customer_id, user?.role_name],
+    queryKey: ['activeTicketsCount', user?.tenant_id, user?.customer_id, user?.role_code],
     queryFn: async () => {
       if (!user) return 0;
-      const roleUp = user.role_name?.toUpperCase() || '';
-      const isTenantUser = !['ADMIN', 'ADMINISTRATOR', 'SYS_ADMIN', 'AGENT', 'SUPPORT_ENGINEER', 'SUPPORT_OFFICER'].includes(roleUp);
+      const roleUp = user.role_code?.toUpperCase() || '';
+      const isTenantUser = !['ADMIN', 'ADMINISTRATOR', 'SYS_ADMIN', 'CEO', 'SUPPORT_MANAGER', 'AGENT', 'SUPPORT_ENGINEER', 'SUPPORT_OFFICER', 'TEAM_LEAD', 'TEAM_MEMBER'].includes(roleUp);
       const userTenantId = user.tenant_id || user.customer_id;
       if (isTenantUser && userTenantId) {
         return api.getActiveTicketsCount(userTenantId);

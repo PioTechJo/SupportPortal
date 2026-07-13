@@ -12,10 +12,10 @@ import { useTickets } from '../hooks/useTickets';
 import { 
   Building, Clock, AlertTriangle, FileSpreadsheet, Filter, CheckCircle2, TrendingUp,
   Inbox, Users, ChevronDown, Check, ShieldAlert, Download, List,
-  Plus, Activity, ChevronRight
+  Plus, Activity, ChevronRight, RotateCcw
 } from 'lucide-react';
 
-const COLORS = ['#f97316', '#3b82f6', '#6366f1', '#14b8a6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981'];
+const COLORS = ['#3B82F6', '#14b8a6', '#6366f1', '#ec4899', '#8b5cf6', '#f59e0b', '#10b981'];
 
 const MultiSelect = ({ options, selectedValues, onChange, placeholder }: { options: {id: string, name: string}[], selectedValues: string[], onChange: (vals: string[]) => void, placeholder: string }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -37,7 +37,7 @@ const MultiSelect = ({ options, selectedValues, onChange, placeholder }: { optio
     <div className="relative">
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-orange-500 text-slate-900 flex items-center gap-2 max-w-[170px]"
+        className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900 flex items-center gap-2 max-w-[170px]"
       >
         <span className="truncate flex-1 text-left">
           {selectedValues.length === 0 ? placeholder : `${selectedValues.length} Selected`}
@@ -53,7 +53,7 @@ const MultiSelect = ({ options, selectedValues, onChange, placeholder }: { optio
               placeholder={`Search...`}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-orange-500 transition-colors"
+              className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500 transition-colors"
             />
           </div>
           <div className="max-h-48 overflow-y-auto py-1">
@@ -66,7 +66,7 @@ const MultiSelect = ({ options, selectedValues, onChange, placeholder }: { optio
                   onClick={() => toggle(opt.id)}
                   className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 text-slate-700 hover:bg-slate-50 transition-colors"
                 >
-                  <div className={`w-3 h-3 rounded flex items-center justify-center shrink-0 border ${selectedValues.includes(opt.id) ? 'bg-orange-500 border-orange-500 text-white' : 'border-slate-300'}`}>
+                  <div className={`w-3 h-3 rounded flex items-center justify-center shrink-0 border ${selectedValues.includes(opt.id) ? 'bg-blue-500 border-blue-500 text-white' : 'border-slate-300'}`}>
                     {selectedValues.includes(opt.id) && <Check size={10} />}
                   </div>
                   <span className="truncate">{opt.name}</span>
@@ -84,15 +84,9 @@ const formatDuration = (startStr: string, endStr: string | null) => {
   const start = new Date(startStr).getTime();
   const end = endStr ? new Date(endStr).getTime() : Date.now();
   const diff = end - start;
-  if (diff < 0) return '0m';
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
-  const minutes = Math.floor((diff / 1000 / 60) % 60);
-  const parts = [];
-  if (days > 0) parts.push(`${days}d`);
-  if (hours > 0 || days > 0) parts.push(`${hours}h`);
-  if (days === 0) parts.push(`${minutes}m`);
-  return parts.join(' ');
+  if (diff < 0) return '0.0 days';
+  const days = diff / (1000 * 60 * 60 * 24);
+  return `${days.toFixed(1)} days`;
 };
 
 export const Overview: React.FC = () => {
@@ -101,7 +95,7 @@ export const Overview: React.FC = () => {
   const { tickets: dashboardTickets, activeTicketsCount, isLoading: dashLoading } = useTickets();
   const navigate = useNavigate();
 
-  const userRoleUp = user?.role_name?.toUpperCase() || '';
+  const userRoleUp = user?.role_code?.toUpperCase() || '';
   const isAdmin = ['ADMIN', 'ADMINISTRATOR', 'SYS_ADMIN', 'CEO', 'SUPPORT_MANAGER'].includes(userRoleUp);
 
   // Filter States for Analytics
@@ -114,6 +108,7 @@ export const Overview: React.FC = () => {
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
   const [selectedEngineers, setSelectedEngineers] = useState<string[]>([]);
   const [selectedEscalationTeams, setSelectedEscalationTeams] = useState<string[]>([]);
+  const [selectedEscalationDevelopers, setSelectedEscalationDevelopers] = useState<string[]>([]);
 
   // Load all tickets for Analytics
   const { data: tickets = [], isLoading: ticketsLoading } = useQuery({
@@ -138,11 +133,6 @@ export const Overview: React.FC = () => {
   const isLoading = ticketsLoading || escalationsLoading || dashLoading;
 
   // --- Dashboard Metrics Calculation ---
-  const totalTickets = dashboardTickets.length;
-  const openTickets = dashboardTickets.filter(t => t.status === 'open').length;
-  const inProgressTickets = dashboardTickets.filter(t => t.status === 'in_progress').length;
-  const resolvedTicketsDash = dashboardTickets.filter(t => t.status === 'resolved').length;
-  const urgentTickets = dashboardTickets.filter(t => t.priority === 'urgent' && t.status !== 'closed').length;
   const currentAndRecent = dashboardTickets.slice(0, 5);
 
   const getPriorityStyle = (priority: string) => {
@@ -157,6 +147,7 @@ export const Overview: React.FC = () => {
   const getStatusStyle = (statusCode: string) => {
     switch((statusCode || '').toUpperCase()) {
       case 'NEW': return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'REOPENED': return 'bg-indigo-50 text-indigo-700 border-indigo-200';
       case 'ASSIGNED': return 'bg-purple-50 text-purple-700 border-purple-200';
       case 'INVESTIGATION': return 'bg-amber-50 text-amber-700 border-amber-200';
       case 'PENDING_CUSTOMER': return 'bg-orange-50 text-orange-700 border-orange-200';
@@ -196,52 +187,21 @@ export const Overview: React.FC = () => {
   }, [tickets, fromDate, toDate, selectedCustomerIds, selectedEngineers]);
 
   const metrics = useMemo(() => {
-    const resolvedCodes = ['RESOLVED', 'CLOSED'];
-    let totalOpen = 0;
-    let resolvedCount = 0;
-    let totalSlaBreaches = 0;
-    let approvedForResolution: number[] = [];
-    const now = new Date();
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(now.getDate() - 30);
+    let newTickets = 0;
+    let reopenedTickets = 0;
+    let inProgressTickets = 0;
+    let closedTickets = 0;
 
     analyticsTickets.forEach(t => {
       const code = (t.status_code || '').toUpperCase();
-      const isClosedOrResolved = resolvedCodes.includes(code) || ['resolved', 'closed'].includes(t.status);
-
-      if (!isClosedOrResolved) {
-        totalOpen++;
-        const createdAt = new Date(t.created_at);
-        const diffTime = Math.abs(now.getTime() - createdAt.getTime());
-        const diffDays = diffTime / (1000 * 60 * 60 * 24);
-        if (diffDays > 5) totalSlaBreaches++;
-      } else {
-        const resolvedAtStr = t.resolution_approved_at || t.resolved_at || t.updated_at;
-        const resDate = resolvedAtStr ? new Date(resolvedAtStr) : null;
-        if (resDate && resDate >= thirtyDaysAgo) resolvedCount++;
-        const crDate = new Date(t.created_at);
-        const clDate = resDate || new Date(t.updated_at);
-        const hours = (clDate.getTime() - crDate.getTime()) / (1000 * 60 * 60);
-        if (!isNaN(hours) && hours >= 0) approvedForResolution.push(hours);
-      }
+      if (code === 'NEW') newTickets++;
+      else if (code === 'REOPENED') reopenedTickets++;
+      else if (code === 'INVESTIGATION') inProgressTickets++;
+      else if (code === 'CLOSED') closedTickets++;
     });
 
-    const avgResolutionTime = approvedForResolution.length > 0 
-      ? (approvedForResolution.reduce((sum, h) => sum + h, 0) / approvedForResolution.length).toFixed(1)
-      : '0.0';
-
-    return { totalOpen, resolvedThisMonth: resolvedCount, avgResolutionTime, slaBreaches: totalSlaBreaches };
+    return { newTickets, reopenedTickets, inProgressTickets, closedTickets };
   }, [analyticsTickets]);
-
-  const uniqueEscalationTeams = useMemo(() => {
-    const tms = new Map<string, string>();
-    escalations.forEach(esc => {
-      if (esc.escalated_team_id) {
-        tms.set(esc.escalated_team_id, esc.teams?.team_name || 'Unknown Team');
-      }
-    });
-    return Array.from(tms.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
-  }, [escalations]);
 
   const escalationMetrics = useMemo(() => {
     const filtered = escalations.filter(esc => {
@@ -255,42 +215,54 @@ export const Overview: React.FC = () => {
       if (selectedEngineers.length > 0) {
         if (!assignedTo || !selectedEngineers.includes(assignedTo)) return false;
       }
-      if (selectedEscalationTeams.length > 0) {
-        const teamId = esc.escalated_team_id;
-        if (!teamId || !selectedEscalationTeams.includes(teamId)) return false;
-      }
       return true;
     });
 
     const uniqueEscalationTickets = new Set(filtered.map(f => f.ticket_id)).size;
-    const teamStats: Record<string, { teamName: string; totalCases: number; pendingCases: number; totalHours: number; returnedCount: number }> = {};
 
-    filtered.forEach(esc => {
-      const teamId = esc.escalated_team_id || 'unknown';
-      const teamName = esc.teams?.team_name || 'Unknown Team';
-      if (!teamStats[teamId]) teamStats[teamId] = { teamName, totalCases: 0, pendingCases: 0, totalHours: 0, returnedCount: 0 };
-      teamStats[teamId].totalCases++;
+    return { totalEscalations: uniqueEscalationTickets, rawData: filtered };
+  }, [escalations, fromDate, toDate, selectedCustomerIds, selectedEngineers]);
 
-      if (esc.escalation_returned_at) {
-        const crDate = new Date(esc.created_at);
-        const retDate = new Date(esc.escalation_returned_at);
-        const hours = (retDate.getTime() - crDate.getTime()) / (1000 * 60 * 60);
-        if (!isNaN(hours) && hours >= 0) {
-          teamStats[teamId].totalHours += hours;
-          teamStats[teamId].returnedCount++;
+  const escalationTeamOptions = useMemo(() => {
+    const teams = new Set(escalationMetrics.rawData.map((esc: any) => esc.teams?.team_name).filter(Boolean));
+    return Array.from(teams).map(t => ({ id: t as string, name: t as string }));
+  }, [escalationMetrics.rawData]);
+
+  const escalationDeveloperOptions = useMemo(() => {
+    const devs = new Set(escalationMetrics.rawData.map((esc: any) => esc.escalated_developer_name).filter(Boolean));
+    return Array.from(devs).map(d => ({ id: d as string, name: d as string }));
+  }, [escalationMetrics.rawData]);
+
+  const displayedEscalations = useMemo(() => {
+    let result = escalationMetrics.rawData;
+    if (selectedEscalationTeams.length > 0) {
+      result = result.filter((esc: any) => selectedEscalationTeams.includes(esc.teams?.team_name));
+    }
+    if (selectedEscalationDevelopers.length > 0) {
+      result = result.filter((esc: any) => selectedEscalationDevelopers.includes(esc.escalated_developer_name));
+    }
+    return result.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [escalationMetrics.rawData, selectedEscalationTeams, selectedEscalationDevelopers]);
+
+  const developerWorkload = useMemo(() => {
+    const workload: Record<string, { developer: string, team: string, total: number, pending: number, returned: number }> = {};
+    escalationMetrics.rawData.forEach((esc: any) => {
+      const devName = esc.escalated_developer_name;
+      if (devName) {
+        const teamName = esc.teams?.team_name || 'Unknown Team';
+        if (!workload[devName]) {
+          workload[devName] = { developer: devName, team: teamName, total: 0, pending: 0, returned: 0 };
         }
-      } else {
-        teamStats[teamId].pendingCases++;
+        workload[devName].total++;
+        if (esc.escalation_returned_at) {
+          workload[devName].returned++;
+        } else {
+          workload[devName].pending++;
+        }
       }
     });
-
-    const teams = Object.values(teamStats).map(t => ({
-      ...t,
-      avgHours: t.returnedCount > 0 ? (t.totalHours / t.returnedCount).toFixed(1) : 'N/A'
-    })).sort((a, b) => b.totalCases - a.totalCases);
-
-    return { totalEscalations: uniqueEscalationTickets, teams, rawData: filtered };
-  }, [escalations, fromDate, toDate, selectedCustomerIds, selectedEngineers]);
+    return Object.values(workload).sort((a, b) => b.total - a.total);
+  }, [escalationMetrics.rawData]);
 
   const customerChartData = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -314,13 +286,13 @@ export const Overview: React.FC = () => {
 
   const agentPerformance = useMemo(() => {
     const resolvedCodes = ['RESOLVED', 'CLOSED'];
-    const performance: Record<string, { name: string; assigned: number; resolved: number; totalHours: number }> = {};
+    const performance: Record<string, { id: string; name: string; assigned: number; resolved: number; totalHours: number }> = {};
     analyticsTickets.forEach(t => {
       const code = (t.status_code || '').toUpperCase();
       const isResolved = resolvedCodes.includes(code) || ['resolved', 'closed'].includes(t.status);
       const agentId = t.assigned_to || 'unassigned';
       const agentName = t.assigned_to_name || 'Unassigned';
-      if (!performance[agentId]) performance[agentId] = { name: agentName, assigned: 0, resolved: 0, totalHours: 0 };
+      if (!performance[agentId]) performance[agentId] = { id: agentId, name: agentName, assigned: 0, resolved: 0, totalHours: 0 };
       performance[agentId].assigned++;
       if (isResolved) {
         performance[agentId].resolved++;
@@ -332,7 +304,7 @@ export const Overview: React.FC = () => {
       }
     });
     return Object.values(performance).map(p => {
-      const avgTime = p.resolved > 0 ? (p.totalHours / p.resolved).toFixed(1) : '0.0';
+      const avgTime = p.resolved > 0 ? ((p.totalHours / p.resolved) / 24).toFixed(1) : '0.0';
       return { ...p, avgTime: parseFloat(avgTime) };
     }).sort((a, b) => b.resolved - a.resolved);
   }, [analyticsTickets]);
@@ -355,23 +327,6 @@ export const Overview: React.FC = () => {
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
   };
 
-  const handleExportEscalations = () => {
-    const csvRows = escalationMetrics.rawData.map(esc => ({
-      'Ticket ID': esc.ticket_id, 'Team': esc.teams?.team_name || 'Unknown',
-      'Escalated At': new Date(esc.created_at).toLocaleString(),
-      'Returned At': esc.escalation_returned_at ? new Date(esc.escalation_returned_at).toLocaleString() : 'Pending',
-      'Bank ID': esc.tickets?.customer_id || esc.tickets?.tenant_id || 'Unknown',
-      'Assigned To ID': esc.tickets?.assigned_to || 'Unassigned'
-    }));
-    const csvContent = Papa.unparse(csvRows);
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `Escalations_Report_${fromDate}_to_${toDate}.csv`);
-    document.body.appendChild(link); link.click(); document.body.removeChild(link);
-  };
-
   return (
     <div className="space-y-6 font-sans p-6">
       {/* Welcome Banner */}
@@ -381,7 +336,7 @@ export const Overview: React.FC = () => {
             Ahlan, {user?.full_name}!
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            {user?.role_name === 'client' 
+            {user?.role_code === 'client' 
               ? `Authorized coordinator for Saudi bank settlements & software channels.` 
               : `Admin console of PIO-TECH active support queue.`}
           </p>
@@ -397,52 +352,6 @@ export const Overview: React.FC = () => {
         )}
       </div>
 
-      {/* Dashboard Metrics Cards */}
-      {dashLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 animate-pulse">
-          {[1,2,3,4].map((i) => (
-            <div key={i} className="bg-white h-28 rounded-xl border border-slate-200" />
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs uppercase font-bold tracking-wider">Active Tickets</span>
-              <Activity size={18} className="text-teal-600" />
-            </div>
-            <p className="text-3xl font-bold text-slate-900 mt-2 font-mono">{activeTicketsCount}</p>
-            <div className="text-[10.5px] mt-2 text-slate-500 flex gap-2 font-mono">
-              <span>{openTickets} Open</span><span>•</span><span>{inProgressTickets} In-Progress</span>
-            </div>
-          </div>
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs uppercase font-bold tracking-wider">Urgent Pending</span>
-              <AlertTriangle size={18} className="text-red-600 animate-pulse" />
-            </div>
-            <p className="text-3xl font-bold text-slate-900 mt-2 font-mono">{urgentTickets}</p>
-            <p className="text-[10.5px] text-red-600 font-semibold mt-2">Action required immediately</p>
-          </div>
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs uppercase font-bold tracking-wider">Successfully Resolved</span>
-              <CheckCircle2 size={18} className="text-emerald-600" />
-            </div>
-            <p className="text-3xl font-bold text-slate-900 mt-2 font-mono">{resolvedTicketsDash}</p>
-            <p className="text-[10.5px] text-emerald-600 font-semibold mt-2">Ready for client review</p>
-          </div>
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs uppercase font-bold tracking-wider">Total Filed History</span>
-              <Clock size={18} className="text-indigo-600" />
-            </div>
-            <p className="text-3xl font-bold text-slate-900 mt-2 font-mono">{totalTickets}</p>
-            <p className="text-[10.5px] text-slate-500 mt-2">All tickets logged to date</p>
-          </div>
-        </div>
-      )}
-
       {/* Admin Analytics Filters */}
       <div className="bg-white p-4 rounded-xl shadow-xs border border-slate-200 flex flex-wrap gap-4 items-center justify-between">
         <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
@@ -450,63 +359,92 @@ export const Overview: React.FC = () => {
         </div>
         <div className="flex flex-wrap gap-2.5 items-center bg-slate-50 p-2 rounded-lg border border-slate-200">
           <MultiSelect options={tenants.map(t => ({ id: t.id, name: t.name }))} selectedValues={selectedCustomerIds} onChange={setSelectedCustomerIds} placeholder="All Banks" />
-          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1 focus-within:ring-1 focus-within:ring-orange-500">
+          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1 focus-within:ring-1 focus-within:ring-blue-500">
             <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="bg-transparent text-slate-900 text-xs outline-none w-[110px]" />
             <span className="text-slate-400 text-xs">to</span>
             <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="bg-transparent text-slate-900 text-xs outline-none w-[110px]" />
           </div>
           <MultiSelect options={uniqueEngineers} selectedValues={selectedEngineers} onChange={setSelectedEngineers} placeholder="All Engineers" />
-          <button onClick={handleExportCSV} className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white font-semibold px-3.5 py-1.5 rounded-lg text-xs transition shadow-sm cursor-pointer">
+          <button onClick={handleExportCSV} className="flex items-center gap-1.5 bg-blue-500 hover:bg-blue-600 text-white font-semibold px-3.5 py-1.5 rounded-lg text-xs transition shadow-sm cursor-pointer">
             <FileSpreadsheet size={13} /> Export CSV
           </button>
         </div>
       </div>
 
-      {/* Admin Analytics Metrics Cards */}
+      {/* Analytics Metrics Cards */}
       {ticketsLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 animate-pulse">
-          {[1,2,3,4].map(i => <div key={i} className="bg-white h-24 rounded-xl border border-slate-200" />)}
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 animate-pulse">
+          {[1,2,3,4,5].map(i => <div key={i} className="bg-white h-24 rounded-xl border border-slate-200" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div 
+            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between cursor-pointer hover:bg-slate-50 transition"
+            onClick={() => navigate('/tickets?status=new')}
+          >
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs uppercase font-bold tracking-wider">Total Pending Queue</span>
+              <span className="text-xs uppercase font-bold tracking-wider">New</span>
               <Inbox size={18} className="text-blue-600" />
             </div>
             <div className="mt-2.5">
-              <span className="text-3xl font-bold text-slate-900">{metrics.totalOpen}</span>
-              <span className="text-[10.5px] text-slate-500 block mt-1">Filtered active tickets</span>
+              <span className="text-3xl font-bold text-slate-900">{metrics.newTickets}</span>
+              <span className="text-[10.5px] text-slate-500 block mt-1">Recently submitted tickets</span>
             </div>
           </div>
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
+
+          <div 
+            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between cursor-pointer hover:bg-slate-50 transition"
+            onClick={() => navigate('/tickets?status=reopened')}
+          >
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs uppercase font-bold tracking-wider">Resolved</span>
+              <span className="text-xs uppercase font-bold tracking-wider">Reopened</span>
+              <RotateCcw size={18} className="text-indigo-600" />
+            </div>
+            <div className="mt-2.5">
+              <span className="text-3xl font-bold text-slate-900">{metrics.reopenedTickets}</span>
+              <span className="text-[10.5px] text-slate-500 block mt-1">Returned by customers</span>
+            </div>
+          </div>
+          
+          <div 
+            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between cursor-pointer hover:bg-slate-50 transition"
+            onClick={() => navigate('/tickets?status=in_progress')}
+          >
+            <div className="flex items-center justify-between text-slate-400">
+              <span className="text-xs uppercase font-bold tracking-wider">In Progress</span>
+              <Activity size={18} className="text-blue-500" />
+            </div>
+            <div className="mt-2.5">
+              <span className="text-3xl font-bold text-slate-900">{metrics.inProgressTickets}</span>
+              <span className="text-[10.5px] text-slate-500 block mt-1">Currently under investigation</span>
+            </div>
+          </div>
+
+          <div 
+            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between cursor-pointer hover:bg-slate-50 transition"
+            onClick={() => navigate('/tickets?escalated=true')}
+          >
+            <div className="flex items-center justify-between text-slate-400">
+              <span className="text-xs uppercase font-bold tracking-wider">Escalated</span>
+              <AlertTriangle size={18} className="text-red-500" />
+            </div>
+            <div className="mt-2.5">
+              <span className="text-3xl font-bold text-slate-900">{escalationMetrics.totalEscalations}</span>
+              <span className="text-[10.5px] text-slate-500 block mt-1">Tickets with internal escalation</span>
+            </div>
+          </div>
+
+          <div 
+            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between cursor-pointer hover:bg-slate-50 transition"
+            onClick={() => navigate('/tickets?status=closed')}
+          >
+            <div className="flex items-center justify-between text-slate-400">
+              <span className="text-xs uppercase font-bold tracking-wider">Closed</span>
               <CheckCircle2 size={18} className="text-emerald-600" />
             </div>
             <div className="mt-2.5">
-              <span className="text-3xl font-bold text-slate-900">{metrics.resolvedThisMonth}</span>
-              <span className="text-[10.5px] text-emerald-600 font-medium mt-1 flex items-center gap-1"><TrendingUp size={11} /> Closing resolution loops</span>
-            </div>
-          </div>
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs uppercase font-bold tracking-wider">Avg Resolution Time</span>
-              <Clock size={18} className="text-amber-500" />
-            </div>
-            <div className="mt-2.5">
-              <span className="text-3xl font-bold text-slate-900">{metrics.avgResolutionTime} <span className="text-sm font-normal text-slate-500">hrs</span></span>
-              <span className="text-[10.5px] text-slate-500 block mt-1">Time from creation to resolution</span>
-            </div>
-          </div>
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs uppercase font-bold tracking-wider">SLA Breaches</span>
-              <AlertTriangle size={18} className="text-red-500" />
-            </div>
-            <div className="mt-2.5 text-left">
-              <span className={`text-3xl font-bold ${metrics.slaBreaches > 0 ? 'text-red-600' : 'text-slate-900'}`}>{metrics.slaBreaches}</span>
-              <span className="text-[10.5px] text-slate-500 block mt-1">Open longer than 5 days</span>
+              <span className="text-3xl font-bold text-slate-900">{metrics.closedTickets}</span>
+              <span className="text-[10.5px] text-slate-500 block mt-1">Resolved and closed tickets</span>
             </div>
           </div>
         </div>
@@ -529,8 +467,20 @@ export const Overview: React.FC = () => {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="#64748b" />
                   <YAxis tick={{ fontSize: 11 }} stroke="#64748b" />
-                  <Tooltip wrapperStyle={{ fontSize: 12, borderRadius: '8px' }} />
-                  <Bar dataKey="count" fill="#f97316" radius={[4, 4, 0, 0]} barSize={32} />
+                  <Tooltip wrapperStyle={{ fontSize: 12, borderRadius: '8px' }} cursor={{ fill: '#f1f5f9' }} />
+                  <Bar 
+                    dataKey="count" 
+                    fill="#3b82f6" 
+                    radius={[4, 4, 0, 0]} 
+                    barSize={32} 
+                    onClick={(data) => {
+                      if (data && data.name) {
+                        navigate(`/tickets?customer=${encodeURIComponent(data.name)}`);
+                      }
+                    }}
+                    cursor="pointer"
+                    className="hover:opacity-80 transition-opacity"
+                  />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -592,14 +542,18 @@ export const Overview: React.FC = () => {
                 <tr><td colSpan={5} className="py-8 text-center text-slate-400 italic">No engineer actions logged.</td></tr>
               ) : (
                 agentPerformance.map(agent => (
-                  <tr key={agent.name} className="hover:bg-slate-50/50 transition">
+                  <tr 
+                    key={agent.id} 
+                    className="hover:bg-slate-100 transition cursor-pointer"
+                    onClick={() => navigate(`/tickets?engineer=${encodeURIComponent(agent.id)}`)}
+                  >
                     <td className="py-3.5 px-6 font-semibold text-slate-900 flex items-center gap-2.5">
                       <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-600">{(agent.name || '?').charAt(0)}</div>
                       <div><p className="text-sm font-medium">{agent.name || 'Unknown'}</p><p className="text-xs text-slate-400">ID: {(agent.name || 'unknown').replaceAll(' ', '-').toLowerCase()}</p></div>
                     </td>
                     <td className="py-4 px-6 text-center font-medium">{agent.assigned}</td>
                     <td className="py-4 px-6 text-center font-medium text-emerald-600">{agent.resolved}</td>
-                    <td className="py-4 px-6 text-center font-bold text-slate-700">{agent.avgTime} hrs</td>
+                    <td className="py-4 px-6 text-center font-bold text-slate-700">{agent.avgTime} days</td>
                     <td className="py-4 px-6">
                       {agent.assigned > 5 ? <span className="bg-red-50 text-red-700 border border-red-100 font-medium px-2 py-0.5 rounded text-xs">High Load</span> : <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 font-medium px-2 py-0.5 rounded text-xs">Active</span>}
                     </td>
@@ -611,42 +565,42 @@ export const Overview: React.FC = () => {
         </div>
       </div>
 
-      {/* Internal Escalations */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="text-left">
-            <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm"><ShieldAlert size={16} className="text-slate-500" /> Internal Escalations</h3>
-            <p className="text-xs text-slate-500 mt-1">Cross-team escalation volumes and delays. <span className="ml-2 font-medium text-slate-700">Total: {escalationMetrics.totalEscalations}</span></p>
-          </div>
-          <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">
-            <MultiSelect 
-              options={uniqueEscalationTeams} 
-              selectedValues={selectedEscalationTeams} 
-              onChange={setSelectedEscalationTeams} 
-              placeholder="Filter by Team" 
-            />
-            <button onClick={handleExportEscalations} className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-3 py-1.5 rounded-lg text-xs border border-slate-200 cursor-pointer">
-              <Download size={13} /> Export Escalations
-            </button>
-          </div>
+        <div className="p-6 border-b border-slate-100 text-left">
+          <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm"><Users size={16} className="text-slate-500" /> Developer Workload</h3>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[600px] border-collapse text-left text-xs text-slate-700">
+          <table className="w-full border-collapse text-left text-xs text-slate-700">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
-                <th className="py-3 px-6">Team</th><th className="py-3 px-6 text-center">Escalations</th><th className="py-3 px-6 text-center">Pending Return</th><th className="py-3 px-6 text-center">Avg Turnaround</th>
+                <th className="py-3 px-6">Developer</th>
+                <th className="py-3 px-6">Team</th>
+                <th className="py-3 px-6 text-center">Total Escalations</th>
+                <th className="py-3 px-6 text-center">Pending</th>
+                <th className="py-3 px-6 text-center">Returned</th>
+                <th className="py-3 px-6 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {escalationMetrics.teams.length === 0 ? (
-                <tr><td colSpan={4} className="py-8 text-center text-slate-400 italic">No escalations recorded.</td></tr>
+              {developerWorkload.length === 0 ? (
+                <tr><td colSpan={6} className="py-8 text-center text-slate-400 italic">No developers currently have escalations assigned.</td></tr>
               ) : (
-                escalationMetrics.teams.map((team, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/50 transition">
-                    <td className="py-3.5 px-6 font-medium text-slate-900">{team.teamName}</td>
-                    <td className="py-4 px-6 text-center font-medium">{team.totalCases}</td>
-                    <td className="py-4 px-6 text-center font-medium">{team.pendingCases > 0 ? <span className="text-red-600 font-bold">{team.pendingCases}</span> : <span className="text-slate-400">0</span>}</td>
-                    <td className="py-4 px-6 text-center font-bold text-slate-700">{team.avgHours} {team.avgHours !== 'N/A' && 'hrs'}</td>
+                developerWorkload.map((dev) => (
+                  <tr 
+                    key={dev.developer} 
+                    onClick={() => navigate(`/tickets?escalated=true&developer=${encodeURIComponent(dev.developer)}`)}
+                    className="hover:bg-slate-50 transition cursor-pointer group"
+                  >
+                    <td className="py-3 px-6 font-medium text-slate-900 group-hover:text-indigo-700">{dev.developer}</td>
+                    <td className="py-3 px-6 text-slate-600 font-medium">{dev.team}</td>
+                    <td className="py-3 px-6 text-center font-bold text-slate-700">{dev.total}</td>
+                    <td className={`py-3 px-6 text-center font-bold ${dev.pending > 0 ? 'text-orange-500' : 'text-slate-400'}`}>{dev.pending}</td>
+                    <td className="py-3 px-6 text-center font-bold text-emerald-600">{dev.returned}</td>
+                    <td className="py-3 px-6 text-right">
+                      <span className="text-indigo-600 font-medium text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-end gap-1">
+                        View tickets <ChevronRight size={14} />
+                      </span>
+                    </td>
                   </tr>
                 ))
               )}
@@ -655,9 +609,17 @@ export const Overview: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="p-6 border-b border-slate-100 text-left">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden mt-6">
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
           <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm"><List size={16} className="text-slate-500" /> Escalation Details</h3>
+          <div className="flex items-center gap-2 w-[400px]">
+            <div className="flex-1">
+              <MultiSelect options={escalationTeamOptions} selectedValues={selectedEscalationTeams} onChange={setSelectedEscalationTeams} placeholder="Filter by Team" />
+            </div>
+            <div className="flex-1">
+              <MultiSelect options={escalationDeveloperOptions} selectedValues={selectedEscalationDevelopers} onChange={setSelectedEscalationDevelopers} placeholder="Filter by Developer" />
+            </div>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px] border-collapse text-left text-xs text-slate-700">
@@ -667,12 +629,22 @@ export const Overview: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {escalationMetrics.rawData.length === 0 ? (
-                <tr><td colSpan={8} className="py-8 text-center text-slate-400 italic">No detailed escalation records found.</td></tr>
+              {displayedEscalations.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-8 text-center text-slate-400 italic">No escalations match the selected filters.</td>
+                </tr>
               ) : (
-                escalationMetrics.rawData.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((esc: any) => (
-                  <tr key={esc.id} className="hover:bg-slate-50/50 transition">
-                    <td className="py-3 px-6 font-medium"><Link to={`/tickets/${esc.ticket_id}`} className="text-orange-500 hover:underline">TK-{esc.tickets?.ticket_no || esc.ticket_id.slice(0, 8).toUpperCase()}</Link></td>
+                displayedEscalations.map((esc: any) => (
+                  <tr 
+                    key={esc.id} 
+                    onClick={() => navigate(`/tickets/${esc.ticket_id}`)}
+                    className="hover:bg-slate-50 cursor-pointer transition"
+                  >
+                    <td className="py-3 px-6 font-medium">
+                      <span className="text-orange-500 font-semibold">
+                        TK-{esc.tickets?.ticket_no || esc.ticket_id.slice(0, 8).toUpperCase()}
+                      </span>
+                    </td>
                     <td className="py-3 px-6 text-slate-900 font-medium truncate max-w-[200px]" title={esc.tickets?.subject}>{esc.tickets?.subject || '—'}</td>
                     <td className="py-3 px-6 text-slate-600 font-medium">{esc.tickets?.assigned_to_name || 'Unassigned'}</td>
                     <td className="py-3 px-6 font-medium text-slate-900">{esc.teams?.team_name || 'Unknown Team'}</td>

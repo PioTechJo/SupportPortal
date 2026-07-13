@@ -23,12 +23,12 @@ export const Login: React.FC = () => {
       const loggedUser = await signIn(email, password);
       
       // Redirect based on role:
-      const roleUp = loggedUser.role_name?.toUpperCase() || '';
+      const roleUp = loggedUser.role_code?.toUpperCase() || '';
       if (['ADMIN', 'ADMINISTRATOR', 'SYS_ADMIN', 'CEO', 'SUPPORT_MANAGER'].includes(roleUp)) {
-        navigate('/admin/dashboard');
-      } else if (loggedUser.role_name === 'agent') {
+        navigate('/admin/overview');
+      } else if (['AGENT', 'SUPPORT_OFFICER', 'SUPPORT_ENGINEER', 'TEAM_LEAD', 'TEAM_MEMBER'].includes(roleUp)) {
         navigate('/agent/dashboard');
-      } else if (loggedUser.role_name === 'cab_user' || loggedUser.role_name === 'client') {
+      } else if (['CLIENT', 'CAB_USER', 'BANK_USER', 'BANK_MANAGER', 'BANK_ADMIN'].includes(roleUp)) {
         navigate('/portal/dashboard');
       } else {
         navigate('/dashboard');

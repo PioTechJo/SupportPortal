@@ -77,10 +77,7 @@ export const UserDetails: React.FC<UserDetailsProps> = ({ user, onBack, onRefres
     });
   };
 
-  const roleDisplay = 
-    user.role_name === 'ADMIN' ? 'System Administrator' :
-    user.role_name === 'SUPPORT_ENGINEER' ? 'Support Engineer' :
-    'Bank User';
+  const roleDisplay = user.role_name || user.role_code || 'Bank User';
 
   return (
     <div className="flex flex-col h-full bg-slate-50 min-h-screen">
@@ -113,7 +110,7 @@ export const UserDetails: React.FC<UserDetailsProps> = ({ user, onBack, onRefres
                 </h1>
                 <div className="flex flex-wrap items-center gap-3 mt-2 text-sm font-medium text-slate-500">
                   <span className="flex items-center gap-1.5 text-slate-600">
-                    <Shield size={14} className={user.role_name === 'ADMIN' ? 'text-purple-500' : 'text-blue-500'} />
+                    <Shield size={14} className={user.role_code === 'ADMIN' ? 'text-purple-500' : 'text-blue-500'} />
                     {roleDisplay}
                   </span>
                   <span className="w-1 h-1 rounded-full bg-slate-300"></span>

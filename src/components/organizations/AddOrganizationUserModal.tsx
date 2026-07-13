@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, UserPlus, Copy, Check, Building2, AlertCircle } from 'lucide-react';
 import { api } from '../../lib/api';
-import { supabaseAnon } from '../../lib/supabase';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Tenant } from '../../types';
 
@@ -24,6 +24,7 @@ export const AddOrganizationUserModal: React.FC<AddOrganizationUserModalProps> =
     name: '',
     email: '',
     role: organization.is_internal ? 'SUPPORT_ENGINEER' : 'BANK_USER',
+    team_id: '',
     department: '',
     jobTitle: '',
     phone: '',
@@ -31,6 +32,7 @@ export const AddOrganizationUserModal: React.FC<AddOrganizationUserModalProps> =
   });
   
   const [availableRoles, setAvailableRoles] = useState<{ id: string, role_code: string, role_name: string }[]>([]);
+  const [teams, setTeams] = useState<{ id: string, team_name: string }[]>([]);
 
   React.useEffect(() => {
     // Determine the default role when modal opens based on org type
@@ -42,7 +44,7 @@ export const AddOrganizationUserModal: React.FC<AddOrganizationUserModalProps> =
     // Fetch roles
     const fetchRoles = async () => {
       try {
-        const { data, error } = await supabaseAnon
+        const { data, error } = await supabase
           .from('roles')
           .select('id, role_code, role_name');
         
@@ -52,7 +54,7 @@ export const AddOrganizationUserModal: React.FC<AddOrganizationUserModalProps> =
           // Filter based on is_internal
           const filtered = data.filter(r => {
             if (organization.is_internal) {
-              return ['SUPPORT_ENGINEER', 'SUPPORT_MANAGER', 'ADMIN'].includes(r.role_code);
+              return ['SUPPORT_ENGINEER', 'SUPPORT_MANAGER', 'ADMIN', 'TEAM_MEMBER'].includes(r.role_code);
             } else {
               return ['BANK_USER', 'BANK_MANAGER', 'BANK_ADMIN'].includes(r.role_code);
             }
@@ -64,8 +66,20 @@ export const AddOrganizationUserModal: React.FC<AddOrganizationUserModalProps> =
       }
     };
 
+    const fetchTeams = async () => {
+      if (!organization.is_internal) return;
+      try {
+        const { data, error } = await supabase.from('teams').select('id, team_name').order('team_name');
+        if (error) throw error;
+        if (data) setTeams(data);
+      } catch (err) {
+        console.error("Failed to fetch teams:", err);
+      }
+    };
+
     if (isOpen) {
       fetchRoles();
+      fetchTeams();
     }
   }, [isOpen, organization.is_internal]);
   
@@ -91,7 +105,11 @@ export const AddOrganizationUserModal: React.FC<AddOrganizationUserModalProps> =
         throw new Error('Please fill in all required fields.');
       }
 
-      const internalRoles = ['SUPPORT_ENGINEER', 'SUPPORT_MANAGER', 'ADMIN'];
+      if (formData.role === 'TEAM_MEMBER' && !formData.team_id) {
+        throw new Error('Please select a team for this Team Member.');
+      }
+
+      const internalRoles = ['SUPPORT_ENGINEER', 'SUPPORT_MANAGER', 'ADMIN', 'TEAM_MEMBER'];
       const externalRoles = ['BANK_USER', 'BANK_MANAGER', 'BANK_ADMIN'];
       
       if (organization.is_internal && !internalRoles.includes(formData.role)) {
@@ -109,6 +127,31 @@ export const AddOrganizationUserModal: React.FC<AddOrganizationUserModalProps> =
         customer_id: organization.id,
         createdBy: currentUser ? { id: currentUser.id, name: currentUser.name || (currentUser as any).full_name || 'Admin' } : { id: '0', name: 'System' }
       });
+      console.log("[DEBUG] result after inviteUser:", result);
+
+      if (formData.role === 'TEAM_MEMBER' && formData.team_id) {
+        const { error: teamErr } = await supabase.from('team_members').insert({
+          user_id: result.profile?.id || result.id,
+          team_id: formData.team_id
+        });
+        if (teamErr) {
+          console.error("[DEBUG] Error inserting into team_members:", teamErr);
+        }
+      }
+
+      // Send welcome email (fire and forget)
+      try {
+        const loginUrl = window.location.origin + '/login';
+        supabase.functions.invoke('send-email', {
+          body: {
+            to: formData.email,
+            subject: "Welcome to Pio-Tech Support Portal - Your Account Details",
+            body: `Hello ${formData.name},\n\nWelcome to the Pio-Tech Support Portal.\nYour account has been created successfully.\n\nYour login email: ${formData.email}\nYour temporary password: ${result.temporaryPassword}\n\nPlease login at: ${loginUrl}\nMake sure to change your password after your first login.`
+          }
+        }).catch(err => console.error("Failed to send welcome email:", err));
+      } catch (emailErr) {
+        console.error("Error invoking send-email for welcome:", emailErr);
+      }
 
       // 2. Set success state to show password
       setSuccessData({
@@ -135,7 +178,7 @@ export const AddOrganizationUserModal: React.FC<AddOrganizationUserModalProps> =
   const handleDone = () => {
     setSuccessData(null);
     setFormData({
-      name: '', email: '', role: 'BANK_USER', department: '', jobTitle: '', phone: '', notes: ''
+      name: '', email: '', role: 'BANK_USER', team_id: '', department: '', jobTitle: '', phone: '', notes: ''
     });
     setCopied(false);
     onSuccess();
@@ -295,6 +338,7 @@ export const AddOrganizationUserModal: React.FC<AddOrganizationUserModalProps> =
                         <option value="SUPPORT_ENGINEER">Support Engineer</option>
                         <option value="SUPPORT_MANAGER">Support Manager</option>
                         <option value="ADMIN">System Administrator</option>
+                        <option value="TEAM_MEMBER">Team Member</option>
                       </>
                     ) : (
                       <>
@@ -305,6 +349,25 @@ export const AddOrganizationUserModal: React.FC<AddOrganizationUserModalProps> =
                     )}
                   </select>
                 </div>
+
+                {formData.role === 'TEAM_MEMBER' && (
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-1.5">
+                      Team <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      required
+                      value={formData.team_id}
+                      onChange={(e) => setFormData({...formData, team_id: e.target.value})}
+                      className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-colors font-medium text-slate-700"
+                    >
+                      <option value="">Select a team...</option>
+                      {teams.map(t => (
+                        <option key={t.id} value={t.id}>{t.team_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-1.5">Department</label>

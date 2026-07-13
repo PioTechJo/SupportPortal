@@ -6,8 +6,9 @@ import { Step0Customer } from './Step0Customer';
 import { Step1Product } from './Step1Product';
 import { Step2Category } from './Step2Category';
 import { Step3Questions } from './Step3Questions';
+import { StepChat } from './StepChat';
 import { Step4Details } from './Step4Details';
-import { X, Check, Brain, AlertCircle } from 'lucide-react';
+import { X, Check, Brain, AlertCircle, Loader2 } from 'lucide-react';
 
 interface TicketCreationWizardProps {
   onClose?: () => void;
@@ -42,6 +43,10 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
   const [error, setError] = useState<string | null>(null);
   
   const [matchedRecommendation, setMatchedRecommendation] = useState<any>(null);
+  
+  const [duplicateTickets, setDuplicateTickets] = useState<any[]>([]);
+  const [isCheckingDuplicates, setIsCheckingDuplicates] = useState<boolean>(false);
+  const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'assistant', content: string }[]>([]);
 
   const initialized = useRef(false);
 
@@ -87,6 +92,51 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
     fetchPriorityId();
   }, [user]);
 
+  const checkForDuplicates = async () => {
+    setIsCheckingDuplicates(true);
+    setDuplicateTickets([]);
+    
+    try {
+      const { data: candidates, error } = await supabase
+        .from('tickets')
+        .select(`
+          id, subject, created_at, 
+          ticket_statuses(status_name, status_code),
+          ticket_answers(question_id, answer_value)
+        `)
+        .eq('customer_id', selectedCustomerId)
+        .eq('product_id', selectedProductId)
+        .eq('category_id', selectedCategoryId);
+        
+      if (error) {
+        console.error('Error fetching candidate tickets:', error);
+        return;
+      }
+      
+      const currentAnswerKeys = Object.keys(answers);
+      if (currentAnswerKeys.length === 0) return; // Skip if no answers were provided
+      
+      const exactMatches = (candidates || []).filter(ticket => {
+        const tAnswers = ticket.ticket_answers || [];
+        
+        // Exact match of length (must have answered same number of questions)
+        if (tAnswers.length !== currentAnswerKeys.length) return false;
+        
+        // Every answer must match EXACTLY
+        return tAnswers.every((ta: any) => answers[ta.question_id] === ta.answer_value);
+      });
+      
+      // Sort newest first
+      exactMatches.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      
+      setDuplicateTickets(exactMatches);
+    } catch (err) {
+      console.error('Error checking duplicates:', err);
+    } finally {
+      setIsCheckingDuplicates(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!title.trim() || !description.trim()) {
       setError('Please provide a title and description.');
@@ -101,6 +151,88 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
     setError(null);
 
     try {
+      // 0. Calculate Severity Score
+      let diagnosticScore = 0;
+      let finalPriorityId = defaultPriorityId;
+      let isAutoFlagged = true; // Always auto-flagged based on diagnostic logic
+      let scorePercentage = 30; // Default if 0 questions answered
+      
+      const answerEntries = Object.entries(answers);
+      const answeredCount = answerEntries.length;
+      let maxPossibleScore = 0;
+
+      if (answeredCount > 0) {
+        // Fetch all point values for these answers
+        const questionIds = answerEntries.map(e => e[0]);
+        const { data: optionsData } = await supabase
+          .from('ai_question_options')
+          .select('question_id, option_value, point_value')
+          .in('question_id', questionIds);
+          
+        if (optionsData) {
+          answerEntries.forEach(([qId, val]) => {
+            const opt = optionsData.find(o => o.question_id === qId && o.option_value === val);
+            if (opt && opt.point_value) {
+              diagnosticScore += Number(opt.point_value);
+            }
+          });
+        }
+        
+        maxPossibleScore = answeredCount * 10; // Assuming max 10 points per question
+        scorePercentage = maxPossibleScore > 0 ? (diagnosticScore / maxPossibleScore) * 100 : 0;
+      }
+      
+      // Determine priorityName based on scorePercentage
+      let priorityName = 'Low';
+      if (scorePercentage >= 90) {
+        priorityName = 'Critical';
+      } else if (scorePercentage >= 70) {
+        priorityName = 'Urgent';
+      } else if (scorePercentage >= 50) {
+        priorityName = 'High';
+      } else if (scorePercentage >= 30) {
+        priorityName = 'Medium';
+      }
+      
+      console.log('[DEBUG] Severity Calculation:', {
+        answeredCount,
+        diagnosticScore,
+        maxPossibleScore,
+        scorePercentage,
+        priorityName
+      });
+      
+      // Fetch corresponding priority ID
+      const { data: targetPriorityData } = await supabase
+        .from('priorities')
+        .select('id')
+        .eq('priority_name', priorityName)
+        .maybeSingle();
+        
+      if (targetPriorityData) {
+        finalPriorityId = targetPriorityData.id;
+      } else {
+        // Fallback if priority doesn't exist
+        isAutoFlagged = false; 
+      }
+
+      // 0.5. Calculate SLA Due Date
+      let slaDays = 3; // Default for Medium
+      const settingKey = `sla_days_${priorityName.toLowerCase()}`;
+      const { data: slaSetting } = await supabase
+        .from('system_settings')
+        .select('setting_value')
+        .eq('setting_key', settingKey)
+        .maybeSingle();
+        
+      if (slaSetting?.setting_value) {
+        slaDays = parseInt(slaSetting.setting_value);
+      }
+      
+      const createdAt = new Date();
+      const slaDueDate = new Date(createdAt);
+      slaDueDate.setDate(slaDueDate.getDate() + slaDays);
+
       // 1. Create Ticket
       const { data: ticket, error: ticketError } = await supabase
         .from('tickets')
@@ -111,13 +243,74 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
           product_id: selectedProductId,
           category_id: selectedCategoryId,
           status_id: newStatusId,
-          priority_id: defaultPriorityId,
-          created_by: user?.id
+          priority_id: finalPriorityId,
+          priority_auto_flagged: isAutoFlagged,
+          diagnostic_score: diagnosticScore,
+          created_by: user?.id,
+          created_at: createdAt.toISOString(),
+          sla_due_date: slaDueDate.toISOString(),
+          chatbot_transcript: chatHistory.length > 0 ? chatHistory : null
         })
-        .select('id')
+        .select('id, ticket_no')
         .single();
 
       if (ticketError) throw ticketError;
+
+      // 1.5. Notify Admins and Send Emails
+      try {
+        const { data: adminRows, error: adminFetchError } = await supabase.rpc('get_admin_user_ids');
+        if (adminFetchError) {
+          console.error('Error fetching admin IDs:', adminFetchError);
+        }
+        const adminIds = (adminRows || []).map((row: any) => row.id);
+        const ticketNo = ticket.ticket_no;
+
+        if (adminIds.length > 0) {
+          const notificationsPayload = adminIds.map((adminId: string) => ({
+            profile_id: adminId,
+            content: `New ticket #${ticketNo} created.`,
+            type: 'new_ticket',
+            is_read: false,
+            link_ticket_id: ticket.id,
+            created_at: new Date().toISOString()
+          }));
+          
+          const { error: insertError } = await supabase.from('notifications').insert(notificationsPayload);
+          if (insertError) {
+            console.error("Supabase notification insert error:", insertError);
+          }
+
+          // Fetch admin emails
+          const { data: adminUsers } = await supabase.from('users').select('email').in('id', adminIds);
+          const adminEmails = adminUsers?.map(u => u.email).filter(Boolean) || [];
+
+          // Send email to each admin (fire and forget)
+          adminEmails.forEach(email => {
+            supabase.functions.invoke('send-email', {
+              body: {
+                to: email,
+                subject: `New ticket ${ticketNo} has been created by ${user?.email || 'Customer'} - ${title}`,
+                body: `Hello Admin,\n\nA new ticket has been created:\n\nTicket No: ${ticketNo}\nSubject: ${title}\nCreated By: ${user?.email || 'Customer'}\n\nPlease review the ticket in the admin portal.`,
+                ticket_id: ticket.id
+              }
+            }).catch(err => console.error("Error sending email to admin:", err));
+          });
+        }
+        
+        // Send email to the customer
+        if (user?.email) {
+          supabase.functions.invoke('send-email', {
+            body: {
+              to: user.email,
+              subject: `Your ticket ${ticketNo} has been created`,
+              body: `Hello,\n\nYour ticket ${ticketNo} has been created and is being reviewed.\n\nSubject: ${title}\n\nWe will get back to you shortly.`,
+              ticket_id: ticket.id
+            }
+          }).catch(err => console.error("Error sending email to customer:", err));
+        }
+      } catch (notifErr) {
+        console.error("Could not post system alerts / send emails", notifErr);
+      }
 
       // 2. Insert Answers
       const answerInserts = Object.entries(answers).map(([questionId, value]) => ({
@@ -171,7 +364,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
         onSuccess(ticket.id, title, selectedProductName);
       }
       setCreatedTicketId(ticket.id);
-      setCurrentStep(5);
+      setCurrentStep(6);
     } catch (err: any) {
       console.error('Submit error:', err);
       setError(err.message || 'Failed to create ticket.');
@@ -228,25 +421,73 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
             answers={answers}
             setAnswers={setAnswers}
             onBack={() => setCurrentStep(2)}
-            onNext={() => setCurrentStep(4)}
+            onNext={async () => {
+              await checkForDuplicates();
+              setCurrentStep(4);
+            }}
           />
         );
-      case 4:
-        return (
-          <Step4Details
-            productName={selectedProductName}
-            categoryName={selectedCategoryName}
-            title={title}
-            setTitle={setTitle}
-            description={description}
-            setDescription={setDescription}
-            onBack={() => setCurrentStep(3)}
-            onSubmit={handleSubmit}
-            isSubmitting={isSubmitting}
-            error={error}
-          />
-        );
+        case 4:
+          return (
+            <StepChat 
+              chatHistory={chatHistory}
+              setChatHistory={setChatHistory}
+              onSkip={() => setCurrentStep(5)}
+              onNext={() => setCurrentStep(5)}
+              selectedProductId={selectedProductId}
+            />
+          );
       case 5:
+        return (
+          <div className="flex flex-col h-full space-y-4">
+            {duplicateTickets.length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-[10px] p-5 shrink-0 animate-in fade-in slide-in-from-top-4">
+                <div className="flex gap-3">
+                  <AlertCircle className="text-amber-500 shrink-0 mt-0.5" size={20} />
+                  <div className="w-full">
+                    <h4 className="font-semibold text-amber-900 mb-1">⚠️ We found similar tickets you've submitted before</h4>
+                    <p className="text-[13px] text-amber-800 mb-4">
+                      Please review the tickets below. If your current issue is different, you can continue submitting this new ticket.
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      {duplicateTickets.map(dup => (
+                        <div key={dup.id} className="bg-white border border-amber-100 rounded-lg p-3 flex justify-between items-center shadow-sm">
+                          <div>
+                            <div className="font-medium text-slate-800 text-[13px] flex items-center gap-2">
+                               <a href={`/tickets/${dup.id}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                 #{dup.id.substring(0,8).toUpperCase()}
+                               </a>
+                               <span>- {dup.subject}</span>
+                            </div>
+                            <div className="text-slate-500 text-[11px] mt-1">
+                               Submitted on {new Date(dup.created_at).toLocaleDateString()}
+                            </div>
+                          </div>
+                          <div className="bg-slate-100 px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-600">
+                             {dup.ticket_statuses?.status_name || 'Unknown'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            <Step4Details
+              productName={selectedProductName}
+              categoryName={selectedCategoryName}
+              title={title}
+              setTitle={setTitle}
+              description={description}
+              setDescription={setDescription}
+              onBack={() => setCurrentStep(4)}
+              onSubmit={handleSubmit}
+              isSubmitting={isSubmitting}
+              error={error}
+            />
+          </div>
+        );
+      case 6:
         return (
           <div className="flex flex-col items-center justify-center py-8 text-center animate-in fade-in zoom-in-95 duration-300">
             <div className="w-14 h-14 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
@@ -315,19 +556,21 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
   };
 
   const tabs = isAdmin 
-    ? ['Customer', 'Product', 'Category', 'Questions', 'Details'] 
-    : ['Product', 'Category', 'Questions', 'Details', 'Result'];
+    ? ['Customer', 'Product', 'Category', 'Questions', 'Chat', 'Details'] 
+    : ['Product', 'Category', 'Questions', 'Chat', 'Details', 'Result'];
 
   const getStepProgress = () => {
     if (isAdmin) {
-      if (currentStep === 0) return 25;
-      if (currentStep === 1) return 50;
-      if (currentStep === 2) return 75;
+      if (currentStep === 0) return 20;
+      if (currentStep === 1) return 40;
+      if (currentStep === 2) return 60;
+      if (currentStep === 3) return 80;
       return 100;
     } else {
-      if (currentStep === 1) return 25;
-      if (currentStep === 2) return 50;
-      if (currentStep === 3) return 75;
+      if (currentStep === 1) return 20;
+      if (currentStep === 2) return 40;
+      if (currentStep === 3) return 60;
+      if (currentStep === 4) return 80;
       return 100;
     }
   };
@@ -385,7 +628,12 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
           })}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 bg-white">
+        <div className="flex-1 overflow-y-auto p-6 bg-white relative">
+          {isCheckingDuplicates && (
+            <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] z-10 flex items-center justify-center">
+              <Loader2 className="animate-spin text-[#f97316]" size={28} />
+            </div>
+          )}
           {renderStep()}
         </div>
       </div>

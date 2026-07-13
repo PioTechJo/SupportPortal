@@ -92,9 +92,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (profile) {
               const metadata = session.user.user_metadata || {};
               const finalRole = profile.role_name || metadata.role_name || metadata.role || 'client';
+              const finalRoleCode = profile.role_code || metadata.role_code || metadata.role || 'client';
               const updatedProfile = {
                 ...profile,
                 role_name: finalRole,
+                role_code: finalRoleCode,
                 tenant_id: profile.customer_id || profile.tenant_id,
                 customer_id: profile.customer_id || profile.tenant_id
               };
@@ -168,9 +170,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (profile) {
             const metadata = session.user.user_metadata || {};
             const finalRole = profile.role_name || metadata.role_name || metadata.role || 'client';
+            const finalRoleCode = profile.role_code || metadata.role_code || metadata.role || 'client';
             const updatedProfile = {
               ...profile,
               role_name: finalRole,
+              role_code: finalRoleCode,
               tenant_id: profile.customer_id || profile.tenant_id,
               customer_id: profile.customer_id || profile.tenant_id
             };

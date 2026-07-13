@@ -450,8 +450,14 @@ export const api = {
 
         const mappedProfiles = (rawProfiles || []).map((p: any) => {
           let rName = p.role; // Fallback legacy
+          let rCode = p.role;
           if (p.roles) {
-            rName = Array.isArray(p.roles) && p.roles.length > 0 ? p.roles[0].role_code : p.roles.role_code;
+            const rObj = Array.isArray(p.roles) && p.roles.length > 0 ? p.roles[0] : p.roles;
+            rName = rObj.role_name || rObj.role_code;
+            rCode = rObj.role_code;
+          }
+          if (rName && rName === rName.toUpperCase()) {
+            rName = rName.split('_').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
           }
           
           return {
@@ -459,7 +465,8 @@ export const api = {
             email: p.email || '',
             full_name: p.name || p.full_name || '',
             name: p.name || p.full_name || '',
-            role_name: rName || 'BANK_USER', // Strict default
+            role_name: rName || 'UNKNOWN',
+            role_code: rCode || 'UNKNOWN',
             role_id: p.role_id,
             tenant_id: p.customer_id || p.tenant_id,
             customer_id: p.customer_id || p.tenant_id,
@@ -522,8 +529,14 @@ export const api = {
 
       if (data) {
         let rName = data.role; // Legacy fallback
+        let rCode = data.role;
         if (data.roles) {
-          rName = Array.isArray(data.roles) && data.roles.length > 0 ? data.roles[0].role_code : data.roles.role_code;
+          const rObj = Array.isArray(data.roles) && data.roles.length > 0 ? data.roles[0] : data.roles;
+          rName = rObj.role_name || rObj.role_code;
+          rCode = rObj.role_code;
+        }
+        if (rName && rName === rName.toUpperCase()) {
+          rName = rName.split('_').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
         }
 
         const result: Profile = {
@@ -531,7 +544,8 @@ export const api = {
           email: data.email || '',
           full_name: data.full_name || data.name || '',
           name: data.full_name || data.name || '',
-          role_name: rName || 'BANK_USER',
+          role_name: rName || 'UNKNOWN',
+          role_code: rCode || 'UNKNOWN',
           role_id: data.role_id,
           tenant_id: data.customer_id || data.tenant_id,
           customer_id: data.customer_id || data.tenant_id,
@@ -992,11 +1006,14 @@ export const api = {
         
         let assignedToName = 'Unassigned';
         if (ticket.assigned_to) {
-          const { data: userData } = await supabase
+          const { data: userData, error: userError } = await supabase
             .from('users')
             .select('full_name')
             .eq('id', ticket.assigned_to)
             .maybeSingle();
+          
+          console.log('[DEBUG getTicket] assigned_to:', ticket.assigned_to, 'userData:', userData, 'userError:', userError);
+
           if (userData) {
             assignedToName = userData.full_name;
           }
@@ -1141,6 +1158,45 @@ export const api = {
       });
       throw error;
     }
+
+    try {
+      const { data: users, error: usersErr } = await supabase
+        .from('users')
+        .select('id, roles!users_role_id_fkey(role_code)');
+        
+      console.log("DEBUG: users query result ->", JSON.stringify({ data: users, error: usersErr }));
+        
+      const adminUsers = (users || []).filter((u: any) => {
+        const roleCode = u.roles?.role_code || u.role_code;
+        return roleCode === 'ADMIN';
+      });
+      let adminIds = adminUsers.map(u => u.id);
+      
+      console.log("DEBUG: adminIds filtered ->", adminIds);
+
+      if (adminIds.length > 0) {
+        const notificationsPayload = adminIds.map(adminId => ({
+          profile_id: adminId,
+          content: `New ticket #${data.id.substring(0, 8).toUpperCase()} created.`,
+          type: 'new_ticket',
+          is_read: false,
+          created_at: new Date().toISOString()
+        }));
+        
+        console.log("DEBUG: notificationsPayload ->", JSON.stringify(notificationsPayload, null, 2));
+        
+        const { data: insertData, error: insertError } = await supabase.from('notifications').insert(notificationsPayload).select();
+        
+        console.log("DEBUG: notifications insert result ->", JSON.stringify({ data: insertData, error: insertError }));
+        
+        if (insertError) {
+          console.error("Supabase notification insert error:", insertError);
+        }
+      }
+    } catch (notifErr) {
+      console.warn("Could not post system alerts / notifications", notifErr);
+    }
+
     return data as Ticket;
   },
 
@@ -1259,7 +1315,7 @@ export const api = {
             author:users!author_id (
               full_name,
               roles (
-                role_name
+                role_code
               )
             )
           `)
@@ -1278,13 +1334,13 @@ export const api = {
 
         return (data || []).map((row: any) => {
           const authorInfo = row.author;
-          const roleName = authorInfo?.roles?.role_name || 'agent';
+          const roleCode = authorInfo?.roles?.role_code || 'agent';
           return {
             id: row.id,
             ticket_id: row.ticket_id,
             author_id: row.author_id || '',
             author_name: authorInfo?.full_name || 'System / Support Team',
-            author_role: (roleName === 'administrator' ? 'admin' : roleName) as UserRole,
+            author_role: (roleCode === 'ADMIN' ? 'admin' : roleCode?.toLowerCase()) as UserRole,
             content: row.comment_text || '',
             is_internal: row.is_internal || row.is_system_generated === true,
             created_at: row.created_at,
@@ -1348,7 +1404,7 @@ export const api = {
             author:users!author_id (
               full_name,
               roles (
-                role_name
+                role_code
               )
             )
           `)
@@ -1372,14 +1428,14 @@ export const api = {
         const authorSingle = Array.isArray(data.author) ? data.author[0] : data.author;
         const authorInfo = authorSingle as any;
         const roleSingle = authorInfo?.roles;
-        const roleName = (Array.isArray(roleSingle) ? roleSingle[0]?.role_name : roleSingle?.role_name) || 'agent';
+        const roleName = (Array.isArray(roleSingle) ? roleSingle[0]?.role_code : roleSingle?.role_code) || 'agent';
 
         return {
           id: data.id,
           ticket_id: data.ticket_id,
           author_id: data.author_id || '',
           author_name: authorInfo?.full_name || comment.author_name || 'System / Support Team',
-          author_role: (roleName === 'administrator' ? 'admin' : roleName) as UserRole,
+          author_role: (roleName === 'ADMIN' ? 'admin' : roleName?.toLowerCase()) as UserRole,
           content: data.comment_text || '',
           is_internal: data.is_system_generated === true,
           created_at: data.created_at
@@ -1677,17 +1733,16 @@ export const api = {
         try {
           const { data: users, error: userErr } = await supabase
             .from('users')
-            .select('id, roles!users_role_id_fkey(role_name)');
+            .select('id, roles!users_role_id_fkey(role_code)');
             
           const adminUsers = (users || []).filter((u: any) => {
-            const roleName = u.roles?.role_name || u.role_name;
-            return roleName === 'admin' || roleName === 'administrator';
+            const roleCode = u.roles?.role_code || u.role_code;
+            return roleCode === 'ADMIN';
           });
           let adminIds = adminUsers.map(u => u.id);
 
           if (adminIds.length > 0) {
             const notificationsPayload = adminIds.map(adminId => ({
-              user_id: adminId,
               profile_id: adminId,
               content: `New ticket #${newTicketId} created by ${params.customerName} for ${params.productName}`,
               type: 'new_ticket',
@@ -1744,12 +1799,11 @@ export const api = {
         }
 
         // Save local notifications
-        const adminProfiles = profiles.filter(p => p.role_name?.toUpperCase() === 'ADMINISTRATOR' || p.role_name?.toUpperCase() === 'ADMIN' || p.role_name?.toUpperCase() === 'SYS_ADMIN');
+        const adminProfiles = profiles.filter(p => p.role_code === 'ADMIN');
         if (adminProfiles.length > 0) {
           const localNotifs = loadLocalData<any>('notifications', []);
           const notifsPayload = adminProfiles.map(admin => ({
             id: `notif-${Math.random().toString(36).substr(2, 9)}`,
-            user_id: admin.id,
             profile_id: admin.id,
             content: `New ticket #${newId} created by ${params.customerName} for ${params.productName}`,
             type: 'new_ticket',
@@ -1979,7 +2033,6 @@ export const api = {
           await supabase
             .from('notifications')
             .insert({
-              user_id: params.agentId,
               profile_id: params.agentId,
               content: `You have been assigned ticket #TKT-${cleanTktId}: ${params.ticketTitle}`,
               type: 'assignment',
@@ -1995,16 +2048,15 @@ export const api = {
           // get admins
           const { data: users } = await supabase
             .from('users')
-            .select('id, roles!users_role_id_fkey(role_name)');
+            .select('id, roles!users_role_id_fkey(role_code)');
           
           const admins = (users || []).filter((u: any) => {
-            const roleName = u.roles?.role_name || u.role_name;
-            return roleName === 'admin' || roleName === 'administrator';
+            const roleCode = u.roles?.role_code || u.role_code;
+            return roleCode === 'ADMIN';
           });
           
           if (admins && admins.length > 0) {
             const managerNotifs = admins.map(adm => ({
-              user_id: adm.id,
               profile_id: adm.id,
               content: `Ticket #TKT-${cleanTktId} has been assigned to ${params.agentName}`,
               type: 'assignment_manager',
@@ -2059,7 +2111,6 @@ export const api = {
         const notifs = loadLocalData<any>('notifications', []);
         notifs.push({
           id: `n-${Math.random().toString(36).substr(2, 9)}`,
-          user_id: params.agentId,
           profile_id: params.agentId,
           content: `You have been assigned ticket #TKT-${cleanTktId}: ${params.ticketTitle}`,
           type: 'assignment',
@@ -2069,11 +2120,10 @@ export const api = {
 
         // get all administrators from local profiles to notify "manager"
         const profiles = loadLocalData<Profile>('profiles', []);
-        const admins = profiles.filter(p => p.role_name?.toUpperCase() === 'ADMIN' || p.role_name?.toUpperCase() === 'ADMINISTRATOR' || p.role_name?.toUpperCase() === 'SYS_ADMIN');
+        const admins = profiles.filter(p => p.role_code === 'ADMIN');
         admins.forEach(adm => {
           notifs.push({
             id: `n-${Math.random().toString(36).substr(2, 9)}`,
-            user_id: adm.id,
             profile_id: adm.id,
             content: `Ticket #TKT-${cleanTktId} has been assigned to ${params.agentName}`,
             type: 'assignment_manager',
@@ -2137,16 +2187,15 @@ export const api = {
         try {
           const { data: users } = await supabase
             .from('users')
-            .select('id, roles!users_role_id_fkey(role_name)');
+            .select('id, roles!users_role_id_fkey(role_code)');
 
           const admins = (users || []).filter((u: any) => {
-            const roleName = u.roles?.role_name || u.role_name;
-            return roleName === 'admin' || roleName === 'administrator';
+            const roleCode = u.roles?.role_code || u.role_code;
+            return roleCode === 'ADMIN';
           });
 
           if (admins && admins.length > 0) {
             const managerNotifs = admins.map(adm => ({
-              user_id: adm.id,
               profile_id: adm.id,
               content: `Ticket #TKT-${cleanTktId} resolution requires your approval. Submitted by ${params.agentName}.`,
               type: 'resolution_approval_requested',
@@ -2164,7 +2213,6 @@ export const api = {
           await supabase
             .from('notifications')
             .insert({
-              user_id: params.agentId,
               profile_id: params.agentId,
               content: `Your resolution for #TKT-${cleanTktId} has been submitted for manager approval.`,
               type: 'resolution_submitted',
@@ -2211,7 +2259,6 @@ export const api = {
         // Notification for Agent
         notifs.push({
           id: `n-${Math.random().toString(36).substr(2, 9)}`,
-          user_id: params.agentId,
           profile_id: params.agentId,
           content: `Your resolution for #TKT-${cleanTktId} has been submitted for manager approval.`,
           type: 'resolution_submitted',
@@ -2221,11 +2268,10 @@ export const api = {
 
         // Notifications for Admins/Managers
         const profiles = loadLocalData<Profile>('profiles', []);
-        const admins = profiles.filter(p => p.role_name?.toUpperCase() === 'ADMIN' || p.role_name?.toUpperCase() === 'ADMINISTRATOR' || p.role_name?.toUpperCase() === 'SYS_ADMIN');
+        const admins = profiles.filter(p => p.role_code === 'ADMIN');
         admins.forEach(adm => {
           notifs.push({
             id: `n-${Math.random().toString(36).substr(2, 9)}`,
-            user_id: adm.id,
             profile_id: adm.id,
             content: `Ticket #TKT-${cleanTktId} resolution requires your approval. Submitted by ${params.agentName}.`,
             type: 'resolution_approval_requested',
@@ -2325,7 +2371,6 @@ export const api = {
             await supabase
               .from('notifications')
               .insert({
-                user_id: params.customerId,
                 profile_id: params.customerId,
                 content: `Your ticket #TKT-${cleanTktId} has been resolved. Please review the solution.`,
                 type: 'ticket_resolved',
@@ -2343,7 +2388,6 @@ export const api = {
             await supabase
               .from('notifications')
               .insert({
-                user_id: params.agentId,
                 profile_id: params.agentId,
                 content: `Your resolution for #TKT-${cleanTktId} was approved and published.`,
                 type: 'resolution_approved',
@@ -2406,7 +2450,6 @@ export const api = {
         if (params.customerId) {
           notifs.push({
             id: `n-${Math.random().toString(36).substr(2, 9)}`,
-            user_id: params.customerId,
             profile_id: params.customerId,
             content: `Your ticket #TKT-${cleanTktId} has been resolved. Please review the solution.`,
             type: 'ticket_resolved',
@@ -2419,7 +2462,6 @@ export const api = {
         if (params.agentId) {
           notifs.push({
             id: `n-${Math.random().toString(36).substr(2, 9)}`,
-            user_id: params.agentId,
             profile_id: params.agentId,
             content: `Your resolution for #TKT-${cleanTktId} was approved and published.`,
             type: 'resolution_approved',
@@ -2508,7 +2550,6 @@ export const api = {
             await supabase
               .from('notifications')
               .insert({
-                user_id: params.agentId,
                 profile_id: params.agentId,
                 content: `Manager requested revision on your resolution for #TKT-${cleanTktId}: ${params.feedback}`,
                 type: 'resolution_revision_requested',
@@ -2567,7 +2608,6 @@ export const api = {
         if (params.agentId) {
           notifs.push({
             id: `n-${Math.random().toString(36).substr(2, 9)}`,
-            user_id: params.agentId,
             profile_id: params.agentId,
             content: `Manager requested revision on your resolution for #TKT-${cleanTktId}: ${params.feedback}`,
             type: 'resolution_revision_requested',

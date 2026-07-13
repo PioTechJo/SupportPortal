@@ -46,14 +46,12 @@ export const OrganizationUsersTable: React.FC<OrganizationUsersTableProps> = ({ 
               <td className="px-6 py-4">
                 <div className="flex items-center gap-1.5 text-slate-600">
                   <Shield size={14} className={
-                    user.role_name === 'ADMIN' ? 'text-purple-500' :
-                    user.role_name === 'SUPPORT_ENGINEER' ? 'text-blue-500' :
+                    user.role_code === 'ADMIN' ? 'text-purple-500' :
+                    user.role_code === 'SUPPORT_ENGINEER' ? 'text-blue-500' :
                     'text-slate-400'
                   } />
                   <span className="font-medium">
-                    {user.role_name === 'ADMIN' ? 'System Administrator' :
-                     user.role_name === 'SUPPORT_ENGINEER' ? 'Support Engineer' :
-                     'Bank User'}
+                    {user.role_name || user.role_code || 'Bank User'}
                   </span>
                 </div>
               </td>
