@@ -49,7 +49,11 @@ export interface Ticket {
   description: string;
   status: 'open' | 'in_progress' | 'pending_approval' | 'resolved' | 'closed';
   priority: 'low' | 'medium' | 'high' | 'urgent';
-  category: 'bug' | 'feature_request' | 'billing' | 'question' | 'other';
+  category: 'bug' | 'feature_request' | 'billing' | 'question' | 'other' | string;
+  diagnostic_category?: {
+    category_name?: string;
+    category_name_ar?: string;
+  } | null;
   tenant_id: string;
   created_by: string; // profile_id
   assigned_to: string | null; // agent/admin profile_id

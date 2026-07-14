@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { ArrowLeft, Package, ChevronRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface Step3QuestionsProps {
   categoryId: string;
@@ -15,6 +16,7 @@ interface Step3QuestionsProps {
 export const Step3Questions: React.FC<Step3QuestionsProps> = ({ 
   categoryId, productName, categoryName, answers, setAnswers, onBack, onNext 
 }) => {
+  const { t, i18n } = useTranslation();
   const [questions, setQuestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -41,7 +43,7 @@ export const Step3Questions: React.FC<Step3QuestionsProps> = ({
     setAnswers(prev => ({ ...prev, [questionId]: value }));
   };
 
-  if (loading) return <div className="p-8 text-center animate-pulse text-slate-500 font-medium text-[14px]">Loading diagnostic questions...</div>;
+  if (loading) return <div className="p-8 text-center animate-pulse text-slate-500 font-medium text-[14px]">{t("wizard.loadingDiagnosticQuestions")}</div>;
 
   return (
     <div className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-4">
@@ -50,22 +52,27 @@ export const Step3Questions: React.FC<Step3QuestionsProps> = ({
           <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-[8px] mb-4">
             <Package size={14} className="text-slate-500" />
             <span className="text-[12px] font-medium text-slate-700">{productName || 'Product'}</span>
-            <ChevronRight size={14} className="text-slate-400" />
-            <span className="text-[12px] font-medium text-slate-700">{categoryName || 'Category'}</span>
+            <ChevronRight size={14} className="rtl:rotate-180 text-slate-400" />
+            <span className="text-[12px] font-medium text-slate-700">{categoryName || t('wizard.stepCategory')}</span>
           </div>
-          <h3 className="text-[18px] font-medium text-slate-800">{categoryName || 'Diagnostic Questions'}</h3>
-          <p className="text-[13px] text-slate-500 mt-1">Please answer these questions to help us diagnose the issue.</p>
+          <h3 className="text-[18px] font-medium text-slate-800">{categoryName || t('wizard.diagnosticQuestions')}</h3>
+          <p className="text-[13px] text-slate-500 mt-1">{t("wizard.pleaseAnswer")}</p>
         </div>
 
         {questions.length > 0 ? (
           <div className="bg-slate-50 border border-slate-200 rounded-[10px] p-5 space-y-5">
-            {questions.map(q => (
+            {questions.map(q => {
+              const displayQuestion = i18n.language === 'ar' && q.question_text_ar ? q.question_text_ar : q.question_text;
+              return (
               <div key={q.id} className="space-y-3">
-                <label className="block text-[13px] font-medium text-slate-700">{q.question_text}</label>
+                <label className="block text-[13px] font-medium text-slate-700">{displayQuestion}</label>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {q.ai_question_options?.map((opt: any) => {
                     const isSelected = answers[q.id] === opt.option_value;
+                    const displayOption = i18n.language === 'ar' && opt.option_label_ar 
+                      ? opt.option_label_ar 
+                      : (opt.option_label || opt.option_value);
                     return (
                       <label 
                         key={opt.id} 
@@ -81,13 +88,14 @@ export const Step3Questions: React.FC<Step3QuestionsProps> = ({
                           onChange={(e) => handleAnswer(q.id, e.target.value)}
                           className="text-[#f97316] focus:ring-[#f97316]"
                         />
-                        <span className="text-[13px] font-medium text-slate-700">{opt.option_label || opt.option_value}</span>
+                        <span className="text-[13px] font-medium text-slate-700">{displayOption}</span>
                       </label>
                     );
                   })}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="p-8 text-center text-slate-500 font-medium text-[14px] bg-slate-50 border border-slate-200 rounded-[10px]">
@@ -98,13 +106,13 @@ export const Step3Questions: React.FC<Step3QuestionsProps> = ({
 
       <div className="pt-6 mt-6 border-t border-slate-200 flex justify-between items-center shrink-0">
         <button onClick={onBack} className="flex items-center gap-2 px-4 py-2 border-[0.5px] border-slate-200 rounded-[8px] text-[14px] font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-          <ArrowLeft size={16} /> Back
+          <ArrowLeft className="rtl:rotate-180" size={16} /> {t('wizard.back')}
         </button>
         <button 
           onClick={onNext} 
           className="bg-[#f97316] hover:bg-[#ea580c] text-white font-medium text-[14px] py-2 px-4 rounded-[8px] transition-colors flex items-center gap-2"
         >
-          Next <ChevronRight size={16} />
+          {t('wizard.next')} <ChevronRight className="rtl:rotate-180" size={16} />
         </button>
       </div>
     </div>

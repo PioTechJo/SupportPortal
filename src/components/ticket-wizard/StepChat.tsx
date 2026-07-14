@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Bot, User, Send, ChevronRight, SkipForward, AlertCircle, Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -22,13 +23,14 @@ export const StepChat: React.FC<StepChatProps> = ({
   onNext,
   selectedProductId
 }) => {
+  const { t } = useTranslation();
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isStarted, setIsStarted] = useState(chatHistory.length > 0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const initialMessage = "Hi! Tell me about the issue you're facing and I'll help clarify it before you submit your ticket.";
+  const initialMessage = t('wizard.chatGreeting');
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -75,7 +77,7 @@ export const StepChat: React.FC<StepChatProps> = ({
       }
     } catch (err: any) {
       console.error('Chat error:', err);
-      setError('Assistant unavailable right now. You can skip or try again.');
+      setError(t('wizard.assistantUnavailable'));
     } finally {
       setIsLoading(false);
     }
@@ -87,23 +89,21 @@ export const StepChat: React.FC<StepChatProps> = ({
         <div className="w-16 h-16 bg-[#fff5ee] text-[#f97316] rounded-full flex items-center justify-center mb-6">
           <Bot size={32} strokeWidth={1.5} />
         </div>
-        <h3 className="text-xl font-semibold text-slate-800 mb-2">Need help describing your issue?</h3>
-        <p className="text-[14px] text-slate-500 mb-8 max-w-sm">
-          Chat with our intelligent assistant to help articulate your technical issue clearly before submitting it to the support team.
-        </p>
+        <h3 className="text-xl font-semibold text-slate-800 mb-2">{t('wizard.needHelp')}</h3>
+        <p className="text-[14px] text-slate-500 mb-8 max-w-sm">{t('wizard.chatDescription')}</p>
         
         <div className="flex flex-col gap-3 w-full max-w-xs">
           <button
             onClick={handleStartChat}
             className="w-full bg-[#f97316] hover:bg-[#ea580c] text-white font-medium py-2.5 px-4 rounded-[8px] transition-colors flex items-center justify-center gap-2 text-[14px]"
           >
-            Start Chat <ChevronRight size={18} />
+            {t('wizard.startChat')} <ChevronRight className="rtl:rotate-180" size={18} />
           </button>
           <button
             onClick={onSkip}
             className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium py-2.5 px-4 rounded-[8px] transition-colors flex items-center justify-center gap-2 text-[14px]"
           >
-            Skip - I'll describe it myself <SkipForward size={16} />
+            {t('wizard.skipDescribe')} <SkipForward className="rtl:rotate-180" size={16} />
           </button>
         </div>
       </div>
@@ -122,7 +122,7 @@ export const StepChat: React.FC<StepChatProps> = ({
             onClick={onNext}
             className="text-[13px] bg-green-50 text-green-700 hover:bg-green-100 font-medium py-1.5 px-3 rounded-[6px] transition-colors flex items-center gap-1.5 border border-green-200"
           >
-            Done - Continue to ticket <ChevronRight size={16} />
+            {t('wizard.doneContinue')} <ChevronRight className="rtl:rotate-180" size={16} />
           </button>
         )}
       </div>
@@ -154,7 +154,7 @@ export const StepChat: React.FC<StepChatProps> = ({
               </div>
               <div className="p-3 bg-white border border-slate-200 text-slate-700 rounded-[12px] rounded-tl-none shadow-sm flex items-center gap-2">
                 <Loader2 size={16} className="animate-spin text-[#f97316]" />
-                <span className="text-[13px] text-slate-500 font-medium">Thinking...</span>
+                <span className="text-[13px] text-slate-500 font-medium">{t("wizard.thinking")}</span>
               </div>
             </div>
           </div>

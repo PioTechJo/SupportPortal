@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { ArrowLeft, ArrowRight, Package } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface Step1ProductProps {
   organizationId: string;
@@ -10,6 +11,7 @@ interface Step1ProductProps {
 }
 
 export const Step1Product: React.FC<Step1ProductProps> = ({ organizationId, selectedProductId, onSelect, onBack }) => {
+  const { t } = useTranslation();
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,19 +28,22 @@ export const Step1Product: React.FC<Step1ProductProps> = ({ organizationId, sele
         .from('organization_products')
         .select(`
           product_id,
-          products (
+          products!inner (
             id,
             product_name,
             description,
-            icon
+            icon,
+            is_active
           )
         `)
         .eq('organization_id', organizationId)
-        .eq('is_active', true);
+        .eq('products.is_active', true);
 
       if (error) {
+        console.error("Supabase Error fetching products:", error);
         setError(error.message);
       } else {
+        console.log("Supabase Data fetched for org", organizationId, ":", data);
         setProducts(data?.map(cp => cp.products).filter(Boolean) || []);
       }
       setLoading(false);
@@ -46,7 +51,7 @@ export const Step1Product: React.FC<Step1ProductProps> = ({ organizationId, sele
     fetchProducts();
   }, [organizationId]);
 
-  if (loading) return <div className="p-8 text-center animate-pulse text-slate-500 font-medium text-[14px]">Loading licensed products...</div>;
+  if (loading) return <div className="p-8 text-center animate-pulse text-slate-500 font-medium text-[14px]">{t("wizard.loadingLicensedProducts")}</div>;
 
   const chipText = onBack ? "Selected Customer" : "Your organization";
 
@@ -57,8 +62,8 @@ export const Step1Product: React.FC<Step1ProductProps> = ({ organizationId, sele
           <span className="inline-block px-3 py-1 bg-slate-100 text-slate-600 text-[12px] font-medium rounded-full mb-3">
             {chipText}
           </span>
-          <h3 className="text-[18px] font-medium text-slate-800">Select product</h3>
-          <p className="text-[13px] text-slate-500 mt-1">Which product is experiencing the issue?</p>
+          <h3 className="text-[18px] font-medium text-slate-800">{t("wizard.selectProductTitle")}</h3>
+          <p className="text-[13px] text-slate-500 mt-1">{t("wizard.whichProduct")}</p>
         </div>
 
         {error && <div className="p-3 bg-red-50 text-red-600 rounded-[8px] text-[13px]">{error}</div>}
@@ -78,7 +83,7 @@ export const Step1Product: React.FC<Step1ProductProps> = ({ organizationId, sele
                     setLocalSelectedId(p.id);
                     setLocalSelectedName(p.product_name);
                   }}
-                  className={`p-4 rounded-[10px] border-[0.5px] text-left transition-colors flex gap-3 items-start ${
+                  className={`p-4 rounded-[10px] border-[0.5px] text-start transition-colors flex gap-3 items-start ${
                     isSelected 
                       ? 'bg-[#fff5ee] border-[#f97316]' 
                       : 'bg-white border-slate-200 hover:border-[#f97316]/50'
@@ -101,7 +106,7 @@ export const Step1Product: React.FC<Step1ProductProps> = ({ organizationId, sele
       <div className="pt-6 mt-6 border-t border-slate-200 flex justify-between items-center shrink-0">
         {onBack ? (
           <button onClick={onBack} className="flex items-center gap-2 px-4 py-2 border-[0.5px] border-slate-200 rounded-[8px] text-[14px] font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-            <ArrowLeft size={16} /> Back
+            <ArrowLeft className="rtl:rotate-180" size={16} /> {t('wizard.back')}
           </button>
         ) : <div />}
         
@@ -110,7 +115,7 @@ export const Step1Product: React.FC<Step1ProductProps> = ({ organizationId, sele
           disabled={!localSelectedId}
           className="bg-[#f97316] disabled:opacity-50 text-white font-medium text-[14px] py-2 px-4 rounded-[8px] flex items-center gap-2 hover:bg-[#ea580c] transition-colors"
         >
-          Next <ArrowRight size={16} />
+          {t('wizard.next')} <ArrowRight className="rtl:rotate-180" size={16} />
         </button>
       </div>
     </div>

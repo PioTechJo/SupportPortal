@@ -9,6 +9,7 @@ import { Step3Questions } from './Step3Questions';
 import { StepChat } from './StepChat';
 import { Step4Details } from './Step4Details';
 import { X, Check, Brain, AlertCircle, Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface TicketCreationWizardProps {
   onClose?: () => void;
@@ -17,6 +18,7 @@ interface TicketCreationWizardProps {
 }
 
 export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onClose, onCancel, onSuccess }) => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const navigate = useNavigate();
   
@@ -445,7 +447,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
                 <div className="flex gap-3">
                   <AlertCircle className="text-amber-500 shrink-0 mt-0.5" size={20} />
                   <div className="w-full">
-                    <h4 className="font-semibold text-amber-900 mb-1">⚠️ We found similar tickets you've submitted before</h4>
+                    <h4 className="font-semibold text-amber-900 mb-1">{t('wizard.duplicateWarningTitle')}</h4>
                     <p className="text-[13px] text-amber-800 mb-4">
                       Please review the tickets below. If your current issue is different, you can continue submitting this new ticket.
                     </p>
@@ -460,11 +462,11 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
                                <span>- {dup.subject}</span>
                             </div>
                             <div className="text-slate-500 text-[11px] mt-1">
-                               Submitted on {new Date(dup.created_at).toLocaleDateString()}
+                               {t('wizard.submittedOn')} {new Date(dup.created_at).toLocaleDateString()}
                             </div>
                           </div>
                           <div className="bg-slate-100 px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-600">
-                             {dup.ticket_statuses?.status_name || 'Unknown'}
+                             {dup.ticket_statuses?.status_name || t('wizard.unknown')}
                           </div>
                         </div>
                       ))}
@@ -493,20 +495,20 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
             <div className="w-14 h-14 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
               <Check size={28} strokeWidth={3} />
             </div>
-            <h3 className="text-[20px] font-semibold text-slate-900 mb-2">Ticket created successfully</h3>
+            <h3 className="text-[20px] font-semibold text-slate-900 mb-2">{t('wizard.successTitle')}</h3>
             
             {matchedRecommendation ? (
-              <div className="w-full max-w-md bg-blue-50 border border-blue-200 rounded-xl p-5 mb-6 text-left relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
+              <div className="w-full max-w-md bg-blue-50 border border-blue-200 rounded-xl p-5 mb-6 text-start relative overflow-hidden">
+                <div className="absolute top-0 start-0 w-1 h-full bg-blue-500"></div>
                 <div className="flex items-start gap-3">
                   <div className="bg-blue-100 p-2 rounded-lg text-blue-600 shrink-0">
                     <Brain size={20} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-semibold text-blue-900 text-[15px]">AI Recommendation</h4>
+                      <h4 className="font-semibold text-blue-900 text-[15px]">{t('wizard.aiRecommendation')}</h4>
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-200 text-blue-800">
-                        {matchedRecommendation.confidence_score}% Match
+                        {matchedRecommendation.confidence_score}% {t('wizard.match')}
                       </span>
                     </div>
                     <p className="text-[13px] text-blue-800 mb-3">{matchedRecommendation.recommendation_text}</p>
@@ -515,7 +517,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
                       <div className="flex items-start gap-1.5 mt-3 pt-3 border-t border-blue-200/50">
                         <AlertCircle size={14} className="text-blue-500 mt-0.5" />
                         <div className="text-[12px]">
-                          <span className="font-semibold text-blue-900">Root Cause: </span>
+                          <span className="font-semibold text-blue-900">{t('wizard.rootCause')}</span>
                           <span className="text-blue-800">{matchedRecommendation.root_cause_text}</span>
                         </div>
                       </div>
@@ -524,18 +526,14 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
                 </div>
               </div>
             ) : (
-              <p className="text-[14px] text-slate-500 max-w-[320px] mb-8">
-                Your ticket has been submitted. No automated recommendation was found. Our support team will review it and get back to you shortly.
-              </p>
+              <p className="text-[14px] text-slate-500 max-w-[320px] mb-8">{t('wizard.noRecommendation')}</p>
             )}
 
             <div className="flex items-center gap-4">
               <button 
                 onClick={onClose || onCancel} 
                 className="px-5 py-2.5 rounded-[8px] text-[14px] font-medium text-slate-600 border border-slate-200 hover:bg-slate-50 transition-colors"
-              >
-                Close
-              </button>
+              >{t('wizard.close')}</button>
               <button 
                 onClick={() => {
                   if (onClose) onClose();
@@ -544,9 +542,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
                   }
                 }}
                 className="px-5 py-2.5 rounded-[8px] text-[14px] font-medium text-white bg-[#f97316] hover:bg-[#ea580c] transition-colors"
-              >
-                View ticket
-              </button>
+              >{t('wizard.viewTicket')}</button>
             </div>
           </div>
         );
@@ -556,8 +552,8 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
   };
 
   const tabs = isAdmin 
-    ? ['Customer', 'Product', 'Category', 'Questions', 'Chat', 'Details'] 
-    : ['Product', 'Category', 'Questions', 'Chat', 'Details', 'Result'];
+    ? [t('wizard.stepCustomer'), t('wizard.stepProduct'), t('wizard.stepCategory'), t('wizard.stepQuestions'), t('wizard.stepChat'), t('wizard.stepDetails')] 
+    : [t('wizard.stepProduct'), t('wizard.stepCategory'), t('wizard.stepQuestions'), t('wizard.stepChat'), t('wizard.stepDetails'), t('wizard.stepResult')];
 
   const getStepProgress = () => {
     if (isAdmin) {
@@ -591,8 +587,8 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
         {/* Header */}
         <div className="bg-[#1a1f2e] p-5 flex justify-between items-center text-white shrink-0">
           <div>
-            <h2 className="text-[18px] font-medium text-white">Create Support Ticket</h2>
-            <p className="text-[12px] text-slate-400 mt-1">Dynamic Diagnostic Wizard</p>
+            <h2 className="text-[18px] font-medium text-white">{t('wizard.createSupportTicket')}</h2>
+            <p className="text-[12px] text-slate-400 mt-1">{t('wizard.dynamicDiagnosticWizard')}</p>
           </div>
           <button onClick={onClose || onCancel} className="text-slate-400 hover:text-white transition">
             <X size={20} />

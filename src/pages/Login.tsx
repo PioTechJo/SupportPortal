@@ -1,20 +1,34 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
-import { Shield, Building, User, Mail, Database, AlertCircle, KeyRound, ArrowRight } from 'lucide-react';
+import { Shield, Building, User, Mail, Database, AlertCircle, KeyRound, ArrowRight, Globe } from 'lucide-react';
+import logoImg from '../assets/pio-tech-logo.png';
 
 export const Login: React.FC = () => {
   const { signIn, dbMode } = useAuth();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('password');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const toggleLanguage = async () => {
+    const currentLang = i18n.language?.startsWith('ar') ? 'ar' : 'en';
+    const newLang = currentLang === 'ar' ? 'en' : 'ar';
+    
+    await i18n.changeLanguage(newLang);
+    
+    localStorage.setItem('appLanguage', newLang);
+    document.documentElement.dir = newLang === 'ar' ? 'rtl' : 'ltr';
+    document.documentElement.lang = newLang;
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) {
-      setError('Please provide a valid corporate email address.');
+      setError(t('login.errorValidEmail'));
       return;
     }
     setError(null);
@@ -35,20 +49,30 @@ export const Login: React.FC = () => {
       }
     } catch (err: any) {
       console.error("Sign-in process failed:", err);
-      setError(err?.message || 'Authentication failed. Please verify credentials.');
+      setError(err?.message || t('login.errorAuthFailed'));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
+    <div className="min-h-screen bg-slate-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans relative">
+      <div className="absolute top-6 end-6">
+        <button
+          onClick={toggleLanguage}
+          className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-600 bg-white rounded-lg shadow-sm hover:bg-slate-50 border border-slate-200 transition-colors"
+        >
+          <Globe size={16} />
+          {t('login.language')}
+        </button>
+      </div>
+
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         {/* Simple Brand Placeholder Above Content */}
         <div className="text-center mb-6">
           <span className="inline-flex items-center gap-1.5 text-xs text-slate-500 font-mono tracking-widest uppercase">
             <span className="w-2 h-2 rounded-full bg-teal-500"></span>
-            {dbMode === 'supabase' ? 'Supabase Secure Access' : 'Simulated DB Sync Active'}
+            {dbMode === 'supabase' ? t('login.supabaseSecure') : t('login.simulatedDb')}
           </span>
         </div>
       </div>
@@ -57,26 +81,18 @@ export const Login: React.FC = () => {
         {/* Container White Card with Dark Navy Header */}
         <div className="bg-white shadow-xl sm:rounded-2xl overflow-hidden border border-slate-200">
           
-          {/* Dark Navy Header with PIO-TECH logo text */}
-          <div className="bg-slate-950 px-8 py-7 border-b border-teal-500/30">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-teal-400 flex items-center justify-center font-black text-slate-950 text-lg shadow-md shadow-teal-400/20">
-                PT
-              </div>
-              <div>
-                <h1 className="text-2xl font-extrabold text-white tracking-tight">
-                  PIO-TECH
-                </h1>
-                <p className="text-[10px] text-teal-400 font-bold uppercase tracking-widest leading-none mt-0.5">
-                  Support Portal
-                </p>
-              </div>
-            </div>
+          {/* Header with PIO-TECH logo */}
+          <div className="bg-white px-8 py-7 border-b border-slate-100 flex justify-center items-center">
+            <img 
+              src={logoImg} 
+              alt="Pio-Tech Logo" 
+              className="w-[180px] h-auto object-contain"
+            />
           </div>
 
           <div className="py-8 px-8">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">
-              Sign In to Your Secure Portal
+              {t('login.signInToPortal')}
             </p>
 
             <form className="space-y-5" onSubmit={handleLogin}>
@@ -91,10 +107,10 @@ export const Login: React.FC = () => {
 
               <div>
                 <label htmlFor="email" className="block text-xs uppercase font-bold tracking-wider text-slate-500">
-                  Email Address
+                  {t('login.emailAddress')}
                 </label>
                 <div className="mt-2 relative rounded-md shadow-xs">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  <div className="absolute inset-y-0 start-0 ps-3 flex items-center pointer-events-none text-slate-400">
                     <Mail size={15} />
                   </div>
                   <input
@@ -105,18 +121,18 @@ export const Login: React.FC = () => {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="email@example.com"
-                    className="block w-full pl-9 pr-3 py-2.5 bg-slate-50 text-slate-900 rounded-lg border border-slate-300 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent text-sm transition"
+                    placeholder={t('login.emailPlaceholder')}
+                    className="block w-full ps-9 pe-3 py-2.5 bg-slate-50 text-slate-900 rounded-lg border border-slate-300 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent text-sm transition"
                   />
                 </div>
               </div>
 
               <div>
                 <label htmlFor="password" className="block text-xs uppercase font-bold tracking-wider text-slate-500">
-                  Password
+                  {t('login.password')}
                 </label>
                 <div className="mt-2 relative rounded-md shadow-xs">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  <div className="absolute inset-y-0 start-0 ps-3 flex items-center pointer-events-none text-slate-400">
                     <KeyRound size={15} />
                   </div>
                   <input
@@ -126,7 +142,7 @@ export const Login: React.FC = () => {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="block w-full pl-9 pr-3 py-2.5 bg-slate-50 text-slate-900 rounded-lg border border-slate-300 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent text-sm transition"
+                    className="block w-full ps-9 pe-3 py-2.5 bg-slate-50 text-slate-900 rounded-lg border border-slate-300 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent text-sm transition"
                   />
                 </div>
               </div>
@@ -140,12 +156,12 @@ export const Login: React.FC = () => {
                   {loading ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                      <span>Verifying Credentials...</span>
+                      <span>{t('login.verifying')}</span>
                     </>
                   ) : (
                     <>
-                      <span>Secure Login</span>
-                      <ArrowRight size={15} />
+                      <span>{t('login.secureLogin')}</span>
+                      <ArrowRight size={15} className="rtl:rotate-180" />
                     </>
                   )}
                 </button>

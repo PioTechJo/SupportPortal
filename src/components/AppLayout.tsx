@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useTenant } from '../context/TenantContext';
@@ -22,25 +23,44 @@ import {
   Brain,
   TableProperties,
   ChevronDown,
+  Menu,
   Clock,
   Mail
 } from 'lucide-react';
+import logoWhite from '../assets/pio-tech-logo-white.png';
 
 interface AppLayoutProps {
   children: React.ReactNode;
 }
 
-const getBreadcrumbTitle = (pathname: string) => {
+const getBreadcrumbTitle = (pathname: string, t: any) => {
   const path = pathname.replace(/^\//, ''); // remove leading slash
   
   if (path.startsWith('tickets/') && path.split('/').length > 1) {
     const id = path.split('/')[1];
     if (id.length >= 8) {
-      return `Tickets / TK-${id.slice(0, 8).toUpperCase()}`;
+      return `${t('layout.supportTickets')} / TK-${id.slice(0, 8).toUpperCase()}`;
     }
   }
   
-  return path || 'Dashboard';
+    const pathKeyMap: Record<string, string> = {
+    '': 'dashboard',
+    'dashboard': 'dashboard',
+    'tickets': 'supportTickets',
+    'users': 'users',
+    'admin/overview': 'overview',
+    'admin/data-assistant': 'askYourData',
+    'admin/reports': 'reportBuilder',
+    'admin/aging-report': 'agingReport',
+    'diagnostic-builder': 'diagnosticBuilder',
+    'recommendation-rules': 'recommendationRules',
+    'admin/sla': 'slaConfiguration',
+    'admin/emails': 'emailLogs',
+    'admin': 'banksManagement'
+  };
+  const key = pathKeyMap[path];
+  if (key) return t(`layout.${key}`);
+  return path || t('layout.dashboard');
 };
 
 const timeAgo = (dateString: string) => {
@@ -71,6 +91,25 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const [isAdminConfigExpanded, setIsAdminConfigExpanded] = useState(false);
   const [isAdminReportingExpanded, setIsAdminReportingExpanded] = useState(false);
   
+  const { t, i18n } = useTranslation();
+
+  useEffect(() => {
+    const currentLang = i18n.language || localStorage.getItem('appLanguage') || 'en';
+    document.documentElement.dir = currentLang === 'ar' ? 'rtl' : 'ltr';
+    document.documentElement.lang = currentLang;
+  }, [i18n.language]);
+
+  const toggleLanguage = async () => {
+    const currentLang = i18n.language?.startsWith('ar') ? 'ar' : 'en';
+    const newLang = currentLang === 'ar' ? 'en' : 'ar';
+    
+    await i18n.changeLanguage(newLang);
+    
+    localStorage.setItem('appLanguage', newLang);
+    document.documentElement.dir = newLang === 'ar' ? 'rtl' : 'ltr';
+    document.documentElement.lang = newLang;
+  };
+
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
@@ -140,10 +179,10 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   };
 
   const navigationItems = [
-    { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, roles: ['client', 'cab_user', 'agent', 'BANK_USER', 'SUPPORT_OFFICER', 'SUPPORT_ENGINEER', 'TEAM_LEAD'] },
-    { name: 'Support Tickets', path: '/tickets', icon: TicketCheck, roles: ['client', 'cab_user', 'agent', 'BANK_USER', 'SUPPORT_OFFICER', 'SUPPORT_ENGINEER', 'TEAM_LEAD'] },
-    { name: 'My Escalations', path: '/tickets', icon: TicketCheck, roles: ['TEAM_MEMBER'] },
-    { name: 'Users', path: '/users', icon: Users, roles: ['SUPPORT_OFFICER'] },
+    { name: 'dashboard', path: '/dashboard', icon: LayoutDashboard, roles: ['client', 'cab_user', 'agent', 'BANK_USER', 'SUPPORT_OFFICER', 'SUPPORT_ENGINEER', 'TEAM_LEAD'] },
+    { name: 'supportTickets', path: '/tickets', icon: TicketCheck, roles: ['client', 'cab_user', 'agent', 'BANK_USER', 'SUPPORT_OFFICER', 'SUPPORT_ENGINEER', 'TEAM_LEAD'] },
+    { name: 'myEscalations', path: '/tickets', icon: TicketCheck, roles: ['TEAM_MEMBER'] },
+    { name: 'users', path: '/users', icon: Users, roles: ['SUPPORT_OFFICER'] },
   ];
 
   const allowedNavigation = navigationItems.filter(item => {
@@ -155,23 +194,23 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const isAdmin = user?.role_code && ['ADMIN', 'ADMINISTRATOR', 'SUPPORT_MANAGER', 'CEO', 'SYS_ADMIN'].includes(user.role_code.toUpperCase());
 
   const adminNavItems = [
-    { name: 'Support Tickets', path: '/tickets', icon: TicketCheck },
-    { name: 'Overview', path: '/admin/overview', icon: LayoutDashboard },
+    { name: 'supportTickets', path: '/tickets', icon: TicketCheck },
+    { name: 'overview', path: '/admin/overview', icon: LayoutDashboard },
   ];
 
   const adminReportingItems = [
-    { name: 'Ask Your Data', path: '/admin/data-assistant', icon: Database },
-    { name: 'Report Builder', path: '/admin/reports', icon: TableProperties },
-    { name: 'Aging Report', path: '/admin/aging-report', icon: Clock },
+    { name: 'askYourData', path: '/admin/data-assistant', icon: Database },
+    { name: 'reportBuilder', path: '/admin/reports', icon: TableProperties },
+    { name: 'agingReport', path: '/admin/aging-report', icon: Clock },
   ];
 
   const adminConfigItems = [
-    { name: 'Diagnostic Builder', path: '/diagnostic-builder', icon: Settings2 },
-    { name: 'Recommendation Rules', path: '/recommendation-rules', icon: Brain },
-    { name: 'SLA Configuration', path: '/admin/sla', icon: Clock },
-    { name: 'Email Logs', path: '/admin/emails', icon: Mail },
-    { name: 'Banks Management', path: '/admin', icon: Settings },
-    { name: 'Users', path: '/users', icon: Users },
+    { name: 'diagnosticBuilder', path: '/diagnostic-builder', icon: Settings2 },
+    { name: 'recommendationRules', path: '/recommendation-rules', icon: Brain },
+    { name: 'slaConfiguration', path: '/admin/sla', icon: Clock },
+    { name: 'emailLogs', path: '/admin/emails', icon: Mail },
+    { name: 'banksManagement', path: '/admin', icon: Settings },
+    { name: 'users', path: '/users', icon: Users },
   ];
 
   return (
@@ -186,13 +225,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       >
         
         {/* Logo area */}
-        <div className={`flex items-center mb-8 px-2 ${isExpanded ? 'px-4' : 'justify-center'}`}>
-          <div className="w-8 h-8 rounded bg-[#3B82F6] flex items-center justify-center font-bold text-white tracking-wider cursor-pointer shrink-0 shadow-sm">
-            PT
-          </div>
-          <span className={`font-bold text-white whitespace-nowrap transition-all duration-200 ${isExpanded ? 'opacity-100 ml-3 w-auto' : 'opacity-0 w-0 overflow-hidden ml-0'}`}>
-            PioTech
-          </span>
+        <div className={`flex items-center mb-8 px-2 h-[32px] ${isExpanded ? 'px-4' : 'justify-center'}`}>
+          <img 
+            src={logoWhite} 
+            alt="Pio-Tech" 
+            className={`h-auto object-contain transition-all duration-200 ${isExpanded ? 'w-[140px] opacity-100' : 'w-8 opacity-100'}`}
+          />
         </div>
 
         {/* Vertical Icons */}
@@ -204,18 +242,18 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
               <Link
                 key={item.path}
                 to={item.path}
-                title={!isExpanded ? item.name : undefined}
+                title={!isExpanded ? t(`layout.${item.name}`) : undefined}
                 className={`
                   flex items-center rounded-lg transition-colors overflow-hidden
-                  ${isExpanded ? 'w-full px-3 py-2.5 h-10' : 'w-10 h-10 justify-center shrink-0'}
+                  ${isExpanded ? 'w-full px-3 py-2.5 h-10 gap-3' : 'w-10 h-10 justify-center shrink-0'}
                   ${isActive 
                     ? 'bg-[#2d3548] text-white' 
                     : 'text-[#8892a4] hover:text-[#cdd3e0] hover:bg-slate-800/50'}
                 `}
               >
                 <Icon size={20} strokeWidth={isActive ? 2.5 : 2} className="shrink-0" />
-                <span className={`whitespace-nowrap font-medium text-[14px] transition-all duration-200 ${isExpanded ? 'opacity-100 ml-3' : 'opacity-0 w-0 overflow-hidden ml-0'}`}>
-                  {item.name}
+                <span className={`whitespace-nowrap font-medium text-[14px] transition-all duration-200 ${isExpanded ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'}`}>
+                  {t(`layout.${item.name}`)}
                 </span>
               </Link>
             );
@@ -230,18 +268,18 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                   <Link
                     key={item.path}
                     to={item.path}
-                    title={!isExpanded ? item.name : undefined}
+                    title={!isExpanded ? t(`layout.${item.name}`) : undefined}
                     className={`
                       flex items-center rounded-lg transition-colors overflow-hidden
-                      ${isExpanded ? 'w-full px-3 py-2.5 h-10' : 'w-10 h-10 justify-center shrink-0'}
+                      ${isExpanded ? 'w-full px-3 py-2.5 h-10 gap-3' : 'w-10 h-10 justify-center shrink-0'}
                       ${isActive 
                         ? 'bg-[#2d3548] text-white' 
                         : 'text-[#8892a4] hover:text-[#cdd3e0] hover:bg-slate-800/50'}
                     `}
                   >
                     <Icon size={20} strokeWidth={isActive ? 2.5 : 2} className="shrink-0" />
-                    <span className={`whitespace-nowrap font-medium text-[14px] transition-all duration-200 ${isExpanded ? 'opacity-100 ml-3' : 'opacity-0 w-0 overflow-hidden ml-0'}`}>
-                      {item.name}
+                    <span className={`whitespace-nowrap font-medium text-[14px] transition-all duration-200 ${isExpanded ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'}`}>
+                      {t(`layout.${item.name}`)}
                     </span>
                   </Link>
                 );
@@ -250,14 +288,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
               <div className={`mt-2 mb-2 w-full flex flex-col ${!isExpanded ? 'items-center' : ''}`}>
                 <button 
                   onClick={() => setIsAdminReportingExpanded(!isAdminReportingExpanded)}
-                  title={!isExpanded ? "Reporting & Management" : undefined}
+                  title={!isExpanded ? t('layout.reportingManagement') : undefined}
                   className={`flex items-center justify-between rounded-lg transition-colors overflow-hidden
                     ${isExpanded ? 'w-full px-3 py-2.5 h-10' : 'w-10 h-10 justify-center shrink-0 hidden'}
                     text-[#8892a4] hover:text-[#cdd3e0] hover:bg-slate-800/50
                   `}
                 >
                   <span className={`whitespace-nowrap font-bold text-[11px] tracking-wider transition-all duration-200 ${isExpanded ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'}`}>
-                    REPORTING
+                    {t('layout.reporting')}
                   </span>
                   {isExpanded && <ChevronDown size={14} className={`transform transition-transform ${isAdminReportingExpanded ? 'rotate-180' : ''}`} />}
                 </button>
@@ -271,18 +309,18 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                         <Link
                           key={item.path}
                           to={item.path}
-                          title={!isExpanded ? item.name : undefined}
+                          title={!isExpanded ? t(`layout.${item.name}`) : undefined}
                           className={`
                             flex items-center rounded-lg transition-colors overflow-hidden
-                            ${isExpanded ? 'w-full px-3 py-2.5 h-10' : 'w-10 h-10 justify-center shrink-0'}
+                            ${isExpanded ? 'w-full px-3 py-2.5 h-10 gap-3' : 'w-10 h-10 justify-center shrink-0'}
                             ${isActive 
                               ? 'bg-[#2d3548] text-white' 
                               : 'text-[#8892a4] hover:text-[#cdd3e0] hover:bg-slate-800/50'}
                           `}
                         >
                           <Icon size={20} strokeWidth={isActive ? 2.5 : 2} className="shrink-0" />
-                          <span className={`whitespace-nowrap font-medium text-[14px] transition-all duration-200 ${isExpanded ? 'opacity-100 ml-3' : 'opacity-0 w-0 overflow-hidden ml-0'}`}>
-                            {item.name}
+                          <span className={`whitespace-nowrap font-medium text-[14px] transition-all duration-200 ${isExpanded ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'}`}>
+                            {t(`layout.${item.name}`)}
                           </span>
                         </Link>
                       );
@@ -294,14 +332,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
               <div className={`mt-2 mb-2 w-full flex flex-col ${!isExpanded ? 'items-center' : ''}`}>
                 <button 
                   onClick={() => setIsAdminConfigExpanded(!isAdminConfigExpanded)}
-                  title={!isExpanded ? "Configuration & Administration" : undefined}
+                  title={!isExpanded ? t('layout.configAdmin') : undefined}
                   className={`flex items-center justify-between rounded-lg transition-colors overflow-hidden
                     ${isExpanded ? 'w-full px-3 py-2.5 h-10' : 'w-10 h-10 justify-center shrink-0 hidden'}
                     text-[#8892a4] hover:text-[#cdd3e0] hover:bg-slate-800/50
                   `}
                 >
                   <span className={`whitespace-nowrap font-bold text-[11px] tracking-wider transition-all duration-200 ${isExpanded ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'}`}>
-                    CONFIGURATION
+                    {t('layout.configuration')}
                   </span>
                   {isExpanded && <ChevronDown size={14} className={`transform transition-transform ${isAdminConfigExpanded ? 'rotate-180' : ''}`} />}
                 </button>
@@ -315,18 +353,18 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                         <Link
                           key={item.path}
                           to={item.path}
-                          title={!isExpanded ? item.name : undefined}
+                          title={!isExpanded ? t(`layout.${item.name}`) : undefined}
                           className={`
                             flex items-center rounded-lg transition-colors overflow-hidden
-                            ${isExpanded ? 'w-full px-3 py-2.5 h-10' : 'w-10 h-10 justify-center shrink-0'}
+                            ${isExpanded ? 'w-full px-3 py-2.5 h-10 gap-3' : 'w-10 h-10 justify-center shrink-0'}
                             ${isActive 
                               ? 'bg-[#2d3548] text-white' 
                               : 'text-[#8892a4] hover:text-[#cdd3e0] hover:bg-slate-800/50'}
                           `}
                         >
                           <Icon size={20} strokeWidth={isActive ? 2.5 : 2} className="shrink-0" />
-                          <span className={`whitespace-nowrap font-medium text-[14px] transition-all duration-200 ${isExpanded ? 'opacity-100 ml-3' : 'opacity-0 w-0 overflow-hidden ml-0'}`}>
-                            {item.name}
+                          <span className={`whitespace-nowrap font-medium text-[14px] transition-all duration-200 ${isExpanded ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'}`}>
+                            {t(`layout.${item.name}`)}
                           </span>
                         </Link>
                       );
@@ -342,25 +380,25 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         <div className={`flex flex-col gap-2 w-full mt-auto px-1.5 ${!isExpanded && 'items-center'}`}>
           <button
             onClick={handleSignOut}
-            title={!isExpanded ? "Sign Out" : undefined}
+            title={!isExpanded ? t('layout.signOut') : undefined}
             className={`flex items-center rounded-lg text-[#8892a4] hover:text-red-400 hover:bg-red-900/20 transition-colors overflow-hidden
-              ${isExpanded ? 'w-full px-3 py-2.5 h-10' : 'w-10 h-10 justify-center shrink-0'}
+              ${isExpanded ? 'w-full px-3 py-2.5 h-10 gap-3' : 'w-10 h-10 justify-center shrink-0'}
             `}
           >
             <LogOut size={20} className="shrink-0" />
-            <span className={`whitespace-nowrap font-medium text-[14px] transition-all duration-200 ${isExpanded ? 'opacity-100 ml-3' : 'opacity-0 w-0 overflow-hidden ml-0'}`}>
-              Sign Out
+            <span className={`whitespace-nowrap font-medium text-[14px] transition-all duration-200 ${isExpanded ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'}`}>
+              {t('layout.signOut')}
             </span>
           </button>
           
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            title={isExpanded ? "Collapse Sidebar" : "Expand Sidebar"}
+            title={isExpanded ? t('layout.collapseSidebar') : t('layout.expandSidebar')}
             className={`flex items-center justify-center rounded-lg text-[#8892a4] hover:text-[#cdd3e0] hover:bg-slate-800/50 transition-colors overflow-hidden mt-2
               w-10 h-10 shrink-0 ${isExpanded ? 'ml-2' : ''}
             `}
           >
-            {isExpanded ? <ChevronLeft size={20} className="shrink-0" /> : <ChevronRight size={20} className="shrink-0" />}
+            {isExpanded ? <ChevronLeft size={20} className="shrink-0 rtl:rotate-180" /> : <ChevronRight size={20} className="shrink-0 rtl:rotate-180" />}
           </button>
         </div>
       </aside>
@@ -372,12 +410,18 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         {!location.pathname.match(/^\/tickets\/[a-zA-Z0-9-]+/) && (
         <header className="h-[60px] bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 z-30">
           <div className="flex items-center text-sm">
-            <span className="text-slate-400 font-medium">Home</span>
-            <span className="mx-2 text-slate-300">›</span>
-            <span className="text-slate-800 font-medium capitalize">{getBreadcrumbTitle(location.pathname)}</span>
+            <span className="text-slate-400 font-medium">{t('layout.home')}</span>
+            <span className="mx-2 text-slate-300 rtl:rotate-180">›</span>
+            <span className="text-slate-800 font-medium capitalize">{getBreadcrumbTitle(location.pathname, i18n.t)}</span>
           </div>
 
           <div className="flex items-center gap-5">
+            <button 
+              onClick={toggleLanguage}
+              className="text-sm font-semibold text-slate-600 hover:text-slate-900 px-3 py-1.5 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+            >
+              {i18n.language?.startsWith('ar') ? 'EN' : 'عربي'}
+            </button>
             <div className="relative" ref={notifRef}>
               <button 
                 onClick={() => setIsNotifOpen(!isNotifOpen)}
@@ -394,14 +438,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
               {isNotifOpen && (
                 <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden z-50 flex flex-col max-h-[28rem]">
                   <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
-                    <h3 className="font-semibold text-slate-800">Notifications</h3>
+                    <h3 className="font-semibold text-slate-800">{t('layout.notifications')}</h3>
                     {unreadCount > 0 && (
                       <button 
                         onClick={(e) => { e.stopPropagation(); markAllReadMutation.mutate(); }}
                         className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
                         disabled={markAllReadMutation.isPending}
                       >
-                        Mark all as read
+                        {t('layout.markAllRead')}
                       </button>
                     )}
                   </div>
@@ -409,7 +453,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                   <div className="overflow-y-auto custom-scrollbar flex-1 p-1">
                     {notifications.length === 0 ? (
                       <div className="px-4 py-8 text-center text-sm text-slate-500">
-                        No notifications yet
+                        {t('layout.noNotifications')}
                       </div>
                     ) : (
                       notifications.map((notif: any) => (
@@ -449,9 +493,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             </div>
             <div className="h-6 w-px bg-slate-200"></div>
             <div className="flex items-center gap-3">
-              <div className="text-right hidden sm:block">
+              <div className="text-end hidden sm:block">
                 <div className="text-sm font-medium text-slate-900 leading-tight">{user?.full_name || 'User'}</div>
-                <div className="text-xs text-slate-500 leading-tight">{user?.role_name || 'Guest'}</div>
+                <div className="text-xs text-slate-500 leading-tight">{user?.role_name ? t(`roles.${user.role_name}`, { defaultValue: user.role_name }) : t('roles.Guest', { defaultValue: 'Guest' })}</div>
               </div>
               <img 
                 src={(user?.avatar_url && !user.avatar_url.includes('unsplash.com')) ? user.avatar_url : `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.full_name || user?.email || 'User')}&background=f97316&color=fff&bold=true`} 
@@ -464,7 +508,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         )}
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto bg-slate-50">
+        <main className="flex-1 overflow-y-auto bg-slate-50 px-6">
           {children}
         </main>
 

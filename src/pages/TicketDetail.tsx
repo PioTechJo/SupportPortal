@@ -28,12 +28,15 @@ import {
 } from "lucide-react";
 
 import { Ticket } from "../types";
+import { useTranslation } from "react-i18next";
 
 const calculateTimeElapsed = (
   start: string,
   end?: string | null,
   isClosed?: boolean,
+  t?: any
 ) => {
+  if (!t) return "";
   if (!start) return "";
   const startDate = new Date(start);
   const endDate = end ? new Date(end) : new Date();
@@ -43,20 +46,21 @@ const calculateTimeElapsed = (
   const diffInDays = Math.floor(diffInHours / 24);
 
   let durationStr = "";
-  if (diffInMinutes < 1) durationStr = "Just now";
+  if (diffInMinutes < 1) durationStr = t("ticketDetail.justNow");
   else if (diffInHours < 1)
-    durationStr = `${diffInMinutes} minute${diffInMinutes === 1 ? "" : "s"}`;
+    durationStr = `${diffInMinutes} ${diffInMinutes === 1 ? t("ticketDetail.minute") : t("ticketDetail.minutes")}`;
   else if (diffInDays < 1)
-    durationStr = `${diffInHours} hour${diffInHours === 1 ? "" : "s"}`;
-  else durationStr = `${diffInDays} day${diffInDays === 1 ? "" : "s"}`;
+    durationStr = `${diffInHours} ${diffInHours === 1 ? t("ticketDetail.hour") : t("ticketDetail.hours")}`;
+  else durationStr = `${diffInDays} ${diffInDays === 1 ? t("ticketDetail.day") : t("ticketDetail.days")}`;
 
-  if (durationStr === "Just now") return durationStr;
+  if (durationStr === t("ticketDetail.justNow")) return durationStr;
   return isClosed
-    ? `Assigned for ${durationStr}`
-    : `Assigned ${durationStr} ago`;
+    ? `${t("ticketDetail.assignedFor")} ${durationStr}`
+    : `${t("ticketDetail.assignedAgo")} ${durationStr} ${t("ticketDetail.ago")}`;
 };
 
 export const TicketDetail: React.FC = () => {
+  const { t, i18n } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -184,7 +188,7 @@ export const TicketDetail: React.FC = () => {
         {due.toLocaleString()}
         {isOverdue && (
           <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">
-            OVERDUE
+            {t("ticketDetail.overdue")}
           </span>
         )}
       </div>
@@ -212,7 +216,8 @@ export const TicketDetail: React.FC = () => {
             status:ticket_statuses(status_name, status_code),
             priority:priorities(priority_name),
             product:products(product_name),
-            customer:customers(customer_name)
+            customer:customers(customer_name),
+            diagnostic_category:ai_diagnostic_categories(category_name, category_name_ar)
           `,
           )
           .eq("id", id)
@@ -241,13 +246,17 @@ export const TicketDetail: React.FC = () => {
           .select(
             `
             answer_value,
-            question:ai_diagnostic_questions(question_text)
+            question:ai_diagnostic_questions(
+              question_text,
+              question_text_ar,
+              ai_question_options(option_value, option_label, option_label_ar)
+            )
           `,
           )
           .eq("ticket_id", id);
         setAnswers(aData || []);
 
-        // Fetch AI Recommendations
+        // Fetch {t("ticketDetail.aiRecommendation")}s
         const { data: recommendationData } = await supabase
           .from("ai_recommendations")
           .select("recommendation_text, confidence_score")
@@ -344,7 +353,7 @@ export const TicketDetail: React.FC = () => {
         // Fetch Attachments
         const { data: attData } = await supabase
           .from("ticket_attachments")
-          .select("id, file_name, file_path, uploaded_at, uploaded_by")
+          .select("id, file_name, file_path, uploaded_at, uploaded_by, is_internal, description")
           .eq("ticket_id", id)
           .order("uploaded_at", { ascending: true });
 
@@ -419,8 +428,63 @@ export const TicketDetail: React.FC = () => {
     }
   };
 
+  const [internalReturnFiles, setInternalReturnFiles] = useState<Record<string, File>>({});
+  const [internalReturnDescriptions, setInternalReturnDescriptions] = useState<Record<string, string>>({});
+  const [uploadingInternalReturns, setUploadingInternalReturns] = useState<Record<string, boolean>>({});
+
   const handleMarkReturned = async (commentId: string) => {
     try {
+      setUploadingInternalReturns((prev) => ({ ...prev, [commentId]: true }));
+      const file = internalReturnFiles[commentId];
+      if (file && user) {
+        const fileExt = file.name.split(".").pop();
+        const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
+        const filePath = `${id}/${fileName}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from("ticket-attachments")
+          .upload(filePath, file);
+
+        if (uploadError) throw uploadError;
+
+        const { error: dbError } = await supabase.from("ticket_attachments").insert({
+          ticket_id: id,
+          file_name: file.name,
+          file_path: filePath,
+          uploaded_by: user.id,
+          is_internal: true,
+          description: internalReturnDescriptions[commentId] || null,
+        });
+
+        if (dbError) throw dbError;
+        
+        // Clear the selected file and description
+        setInternalReturnFiles((prev) => {
+          const next = { ...prev };
+          delete next[commentId];
+          return next;
+        });
+        setInternalReturnDescriptions((prev) => {
+          const next = { ...prev };
+          delete next[commentId];
+          return next;
+        });
+        
+        // Refetch attachments
+        const { data: attData } = await supabase
+          .from("ticket_attachments")
+          .select("id, file_name, file_path, uploaded_at, uploaded_by, is_internal, description")
+          .eq("ticket_id", id)
+          .order("uploaded_at", { ascending: true });
+          
+        if (attData) {
+            const uploaderIds = [...new Set(attData.filter((a) => a.uploaded_by).map((a) => a.uploaded_by))];
+            const { data: uploadersData } = await supabase.from("users").select("id, full_name").in("id", uploaderIds);
+            const uploadersMap = Object.fromEntries((uploadersData || []).map((u) => [u.id, u.full_name]));
+            setAttachments(attData.map((a) => ({ ...a, uploader_name: uploadersMap[a.uploaded_by] || "Unknown" })));
+        }
+      }
+
       const returnedAt = new Date().toISOString();
       const { error } = await supabase
         .from("ticket_comments")
@@ -437,6 +501,8 @@ export const TicketDetail: React.FC = () => {
     } catch (err) {
       console.error("Error marking returned:", err);
       alert("Failed to mark internal note as returned.");
+    } finally {
+      setUploadingInternalReturns((prev) => ({ ...prev, [commentId]: false }));
     }
   };
 
@@ -670,7 +736,7 @@ export const TicketDetail: React.FC = () => {
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center font-sans">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3B82F6] mb-4" />
         <span className="text-sm font-semibold text-slate-500">
-          Loading ticket details...
+          {t("ticketDetail.loadingTicketDetails")}
         </span>
       </div>
     );
@@ -679,7 +745,7 @@ export const TicketDetail: React.FC = () => {
   if (!ticket) {
     return (
       <div className="min-h-screen bg-slate-50 p-8 text-center text-red-500">
-        Ticket not found.
+        {t("ticketDetail.ticketNotFound")}
       </div>
     );
   }
@@ -823,7 +889,7 @@ export const TicketDetail: React.FC = () => {
           status_code: "INVESTIGATION",
           status_name: statusData.status_name,
         },
-        assigned_to_name: assignedEng?.full_name || "Unassigned",
+        assigned_to_name: assignedEng?.full_name || t("ticketDetail.unassigned"),
         assignedEngineerName: assignedEng?.full_name,
       });
       setShowAssignDropdown(false);
@@ -1241,22 +1307,18 @@ export const TicketDetail: React.FC = () => {
             onClick={() => navigate(-1)}
             className="flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-[#3B82F6] transition-colors"
           >
-            <ArrowLeft size={16} />
-            Back
-          </button>
+            <ArrowLeft size={16} />{t("ticketDetail.back")}</button>
           <div className="h-4 w-px bg-slate-300"></div>
           <div className="flex items-center gap-2">
             <span className="text-sm font-mono font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{`TK-${id?.slice(0, 8).toUpperCase()}`}</span>
             <span
-              className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ml-1 ${getStatusColor(ticket.status?.status_code || ticket.status_code || ticket.status)}`}
+              className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ms-1 ${getStatusColor(ticket.status?.status_code || ticket.status_code || ticket.status)}`}
             >
-              {ticket.status?.status_name ||
-                ticket.status_code ||
-                ticket.status}
+              {t(`statusLabels.${(ticket.status?.status_code || ticket.status_code || ticket.status || '').toUpperCase()}`, { defaultValue: ticket.status?.status_name || ticket.status_code || ticket.status })}
             </span>
           </div>
-          <div className="h-4 w-px bg-slate-300 ml-1"></div>
-          <h1 className="text-xl font-bold text-slate-900 line-clamp-1 pr-4 ml-1">
+          <div className="h-4 w-px bg-slate-300 ms-1"></div>
+          <h1 className="text-xl font-bold text-slate-900 line-clamp-1 pe-4 ms-1">
             {ticket.title || ticket.subject}
           </h1>
         </div>
@@ -1280,9 +1342,7 @@ export const TicketDetail: React.FC = () => {
                 }}
                 className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-sm font-medium transition-colors shadow-sm"
               >
-                <ArrowLeft size={16} />
-                Reopen Ticket
-              </button>
+                <ArrowLeft size={16} />{t("ticketDetail.reopenTicket")}</button>
             )}
 
           {isAdmin &&
@@ -1298,7 +1358,7 @@ export const TicketDetail: React.FC = () => {
                   ) : (
                     <XCircle size={16} />
                   )}
-                  Reject
+                  {t("ticketDetail.reject")}
                 </button>
                 <button
                   onClick={handleApproveTicket}
@@ -1310,7 +1370,7 @@ export const TicketDetail: React.FC = () => {
                   ) : (
                     <CheckCircle2 size={16} />
                   )}
-                  Approve
+                  {t("ticketDetail.approve")}
                 </button>
               </>
             )}
@@ -1323,9 +1383,7 @@ export const TicketDetail: React.FC = () => {
                 onClick={handleEscalateClick}
                 className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-sm font-medium transition-colors shadow-sm"
               >
-                <Lock size={16} />
-                Internal Note
-              </button>
+                <Lock size={16} />{t("ticketDetail.internalNote")}</button>
             )}
 
           {ticket?.assigned_to === user?.id &&
@@ -1336,17 +1394,13 @@ export const TicketDetail: React.FC = () => {
                 onClick={() => setShowResolveModal(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg text-sm font-medium transition-colors shadow-sm"
               >
-                <CheckCircle2 size={16} />
-                Resolve Ticket
-              </button>
+                <CheckCircle2 size={16} />{t("ticketDetail.resolveTicket")}</button>
             )}
 
           {isAdmin && (
             <>
               <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-sm font-medium transition-colors">
-                <Edit size={16} />
-                Edit
-              </button>
+                <Edit size={16} />{t("ticketDetail.edit")}</button>
               <div className="relative">
                 <button
                   onClick={handleAssignClick}
@@ -1359,15 +1413,15 @@ export const TicketDetail: React.FC = () => {
                     <UserPlus size={16} />
                   )}
                   {ticket.assignedEngineerName
-                    ? `Assigned: ${ticket.assignedEngineerName}`
-                    : "Assign"}
+                    ? `${t("ticketDetail.assigned")} ${ticket.assignedEngineerName}`
+                    : t("ticketDetail.assign")}
                 </button>
 
                 {showAssignDropdown && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-[10px] shadow-lg border border-slate-200 overflow-hidden z-20">
+                  <div className="absolute end-0 mt-2 w-64 max-w-[calc(100vw-2rem)] bg-white rounded-[10px] shadow-lg border border-slate-200 overflow-hidden z-20">
                     <div className="p-3 border-b border-slate-100">
                       <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        Select Support Engineer
+                        {t("ticketDetail.selectSupportEngineer")}
                       </h3>
                     </div>
                     <div className="max-h-60 overflow-y-auto p-2">
@@ -1380,7 +1434,7 @@ export const TicketDetail: React.FC = () => {
                           <button
                             key={eng.id}
                             onClick={() => handleAssignTicket(eng.id)}
-                            className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-blue-50 hover:text-[#3B82F6] rounded-md transition-colors flex items-center justify-between group"
+                            className="w-full text-start px-3 py-2 text-sm text-slate-700 hover:bg-blue-50 hover:text-[#3B82F6] rounded-md transition-colors flex items-center justify-between group"
                           >
                             <div className="flex flex-col">
                               <span className="font-medium">{eng.full_name}</span>
@@ -1389,13 +1443,13 @@ export const TicketDetail: React.FC = () => {
                               </span>
                             </div>
                             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[11px] font-semibold group-hover:bg-blue-100 group-hover:text-[#3B82F6] transition-colors">
-                              <span>{eng.openTicketsCount || 0} Tickets</span>
+                              <span>{eng.openTicketsCount || 0} {t("ticketDetail.ticketsCount")}</span>
                             </div>
                           </button>
                         ))
                       ) : (
                         <div className="p-4 text-center text-sm text-slate-500">
-                          No engineers found
+                          {t("ticketDetail.noEngineersFound")}
                         </div>
                       )}
                     </div>
@@ -1417,17 +1471,19 @@ export const TicketDetail: React.FC = () => {
               <span
                 className={`text-xs font-semibold px-2.5 py-1 rounded-full ${getPriorityColor(ticket.priority?.priority_name || ticket.priority)}`}
               >
-                {ticket.priority?.priority_name || ticket.priority} Priority
+                {t(`priorityLabels.${(ticket.priority?.priority_name || ticket.priority || 'MEDIUM').toUpperCase()}`, { defaultValue: ticket.priority?.priority_name || ticket.priority })} {t("ticketDetail.priority")}
               </span>
               <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full">
                 {ticket.product?.product_name ||
                   ticket.product_id ||
-                  "Unknown Product"}
+                  t("ticketDetail.unknownProduct")}
               </span>
               <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full">
-                {ticket.category?.name || ticket.category || "General"}
+                {i18n.language === 'ar' && ticket.diagnostic_category?.category_name_ar 
+                  ? ticket.diagnostic_category.category_name_ar 
+                  : (ticket.diagnostic_category?.category_name || ticket.category?.name || ticket.category || t("ticketDetail.general"))}
               </span>
-              <span className="text-xs text-slate-400 ml-auto flex items-center gap-1">
+              <span className="text-xs text-slate-400 ms-auto flex items-center gap-1">
                 <Clock size={14} />
                 {new Date(ticket.created_at).toLocaleString()}
               </span>
@@ -1439,33 +1495,46 @@ export const TicketDetail: React.FC = () => {
 
           {/* Card 2: Diagnostics & AI */}
           <div className="bg-white rounded-[10px] border border-slate-200 border-t-[3px] border-t-[#3B82F6] p-8 shadow-sm relative overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 h-16 bg-blue-50/50 z-0"></div>
+            <div className="absolute top-0 inset-x-0 h-16 bg-blue-50/50 z-0"></div>
             <h2 className="text-lg font-semibold text-slate-800 mb-6 flex items-center gap-3 relative z-10">
               <div className="w-10 h-10 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center">
                 <AlertCircle size={20} className="text-[#3B82F6]" />
               </div>
-              Diagnostic Information
+              {t("ticketDetail.diagnosticInformation")}
             </h2>
 
             {answers.length > 0 ? (
               <div className="space-y-1 mb-6 mt-4">
-                {answers.map((ans, idx) => (
+                {answers.map((ans, idx) => {
+                  const q = ans.question;
+                  const displayQuestion = i18n.language === 'ar' && q?.question_text_ar 
+                    ? q.question_text_ar 
+                    : (q?.question_text || t("ticketDetail.diagnosticQuestion"));
+                  
+                  const options = q?.ai_question_options || [];
+                  const matchedOption = options.find((o: any) => o.option_value === ans.answer_value);
+                  const displayAnswer = i18n.language === 'ar' && matchedOption?.option_label_ar 
+                    ? matchedOption.option_label_ar 
+                    : (matchedOption?.option_label || ans.answer_value);
+
+                  return (
                   <div
                     key={idx}
                     className="flex flex-col sm:flex-row gap-1 sm:gap-3 py-3 border-b border-slate-100 last:border-0"
                   >
                     <span className="text-slate-500 text-sm sm:min-w-[220px]">
-                      {ans.question?.question_text || "Diagnostic Question"}
+                      {displayQuestion}
                     </span>
                     <span className="text-slate-800 text-sm font-medium">
-                      {ans.answer_value}
+                      {displayAnswer}
                     </span>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <p className="text-sm text-slate-500 mb-6 italic">
-                No diagnostic answers provided.
+                {t("ticketDetail.noDiagnosticAnswers")}
               </p>
             )}
 
@@ -1494,7 +1563,7 @@ export const TicketDetail: React.FC = () => {
                       color: "#1d4ed8",
                     }}
                   >
-                    AI Recommendation
+                    {t("ticketDetail.aiRecommendation")}
                   </span>
                   <span
                     style={{
@@ -1505,7 +1574,7 @@ export const TicketDetail: React.FC = () => {
                       borderRadius: "10px",
                     }}
                   >
-                    {recommendationData.confidence_score}% Match
+                    {recommendationData.confidence_score}% {t("ticketDetail.match")}
                   </span>
                 </div>
                 <p
@@ -1527,9 +1596,7 @@ export const TicketDetail: React.FC = () => {
               <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
                   <Paperclip size={20} className="text-[#3B82F6]" />
-                </div>
-                Attachments
-              </h2>
+                </div>{t("ticketDetail.attachments")}</h2>
               <div className="flex items-center">
                 <input
                   type="file"
@@ -1548,7 +1615,7 @@ export const TicketDetail: React.FC = () => {
                   ) : (
                     <Paperclip size={14} />
                   )}
-                  {uploading ? "Uploading..." : "Attach file"}
+                  {uploading ? t("ticketDetail.uploading") : t("ticketDetail.attachFile")}
                 </label>
                 <span
                   style={{
@@ -1557,14 +1624,14 @@ export const TicketDetail: React.FC = () => {
                     marginLeft: "8px",
                   }}
                 >
-                  PDF, PNG, JPG, ZIP only (max 5 MB)
+                  {t("ticketDetail.allowedFileTypes")}
                 </span>
               </div>
             </div>
 
-            {attachments.length > 0 ? (
+            {attachments.filter(a => !a.is_internal).length > 0 ? (
               <div className="space-y-2">
-                {attachments.map((att) => (
+                {attachments.filter(a => !a.is_internal).map((att) => (
                   <div
                     key={att.id}
                     className="flex items-center justify-between p-3 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors group"
@@ -1614,8 +1681,73 @@ export const TicketDetail: React.FC = () => {
               </div>
             ) : (
               <p className="text-sm text-slate-500 italic text-center py-4">
-                No attachments yet.
+                {t("ticketDetail.noAttachments")}
               </p>
+            )}
+
+            {(isAdmin || (user?.role_code && ['SUPPORT_ENGINEER', 'TEAM_MEMBER'].includes(user.role_code.toUpperCase())) || user?.id === ticket.assigned_to) && attachments.filter(a => a.is_internal).length > 0 && (
+              <div className="mt-8 pt-6 border-t border-slate-100">
+                <div className="flex items-center gap-2 mb-4">
+                  <h3 className="text-sm font-semibold text-slate-700">Internal Attachments</h3>
+                  <div className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase flex items-center gap-1">
+                    <Lock size={10} /> Internal Only
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {attachments.filter(a => a.is_internal).map((att) => (
+                    <div
+                      key={att.id}
+                      className="flex items-center justify-between p-3 border border-indigo-50 bg-indigo-50/30 rounded-lg hover:bg-indigo-50/80 transition-colors group"
+                    >
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <div className="w-8 h-8 rounded bg-white border border-indigo-100 text-indigo-500 flex items-center justify-center shrink-0">
+                          {getFileIcon(att.file_name || "")}
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span
+                            className="text-sm font-medium text-indigo-900 truncate"
+                            title={att.file_name}
+                          >
+                            {att.file_name}
+                          </span>
+                          {att.description && (
+                            <span className="text-xs text-indigo-500/90 truncate mb-0.5" title={att.description}>
+                              {att.description}
+                            </span>
+                          )}
+                          <div className="flex items-center gap-2 text-xs text-indigo-400/80">
+                            <span>{att.uploader_name || "User"}</span>
+                            <span>•</span>
+                            <span>
+                              {new Date(att.uploaded_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => downloadAttachment(att.file_path)}
+                          className="p-1.5 text-indigo-400 hover:text-indigo-600 hover:bg-white rounded"
+                          title="Download"
+                        >
+                          <Download size={16} />
+                        </button>
+                        {(isAdmin || user?.id === att.uploaded_by) && (
+                          <button
+                            onClick={() =>
+                              handleDeleteAttachment(att.id, att.file_path)
+                            }
+                            className="p-1.5 text-indigo-400 hover:text-red-500 hover:bg-white rounded"
+                            title="Delete"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
 
@@ -1623,9 +1755,7 @@ export const TicketDetail: React.FC = () => {
           {ticket.resolution_justification && (
             <div className="bg-white rounded-[10px] border border-emerald-200 p-6 shadow-sm">
               <h2 className="text-base font-semibold text-emerald-800 mb-3 flex items-center gap-2">
-                <CheckCircle2 size={18} className="text-emerald-600" />
-                Resolution Justification
-              </h2>
+                <CheckCircle2 size={18} className="text-emerald-600" />{t("ticketDetail.resolutionJustification")}</h2>
               <div className="prose prose-sm max-w-none text-slate-700 whitespace-pre-wrap bg-emerald-50/50 p-4 rounded-lg border border-emerald-100 shadow-sm">
                 {ticket.resolution_justification}
               </div>
@@ -1637,9 +1767,7 @@ export const TicketDetail: React.FC = () => {
             <h2 className="text-lg font-semibold text-slate-800 mb-8 flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
                 <MessageSquare size={20} className="text-[#3B82F6]" />
-              </div>
-              Activity & Comments
-            </h2>
+              </div>{t("ticketDetail.activityAndComments")}</h2>
 
             <div className="space-y-6 mb-6">
               {comments.map((comment) => (
@@ -1664,19 +1792,19 @@ export const TicketDetail: React.FC = () => {
                         {new Date(comment.created_at).toLocaleString()}
                       </span>
                       {comment.is_internal && (
-                        <div className="flex items-center gap-1.5 ml-2 bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded text-xs font-semibold">
+                        <div className="flex items-center gap-1.5 ms-2 bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded text-xs font-semibold">
                           <Lock size={12} />
                           Internal
                           {(comment.teams?.team_name ||
                             comment.escalated_developer_name) && (
-                            <span className="font-normal opacity-90 border-l border-indigo-200 pl-1.5 ml-0.5 flex items-center gap-1">
+                            <span className="font-normal opacity-90 border-s border-indigo-200 ps-1.5 ml-0.5 flex items-center gap-1">
                               {comment.teams?.team_name &&
-                                `Escalated to ${comment.teams.team_name}`}
+                                `${t("ticketDetail.escalatedTo")} ${comment.teams.team_name}`}
                               {comment.teams?.team_name &&
                                 comment.escalated_developer_name &&
                                 " - "}
                               {comment.escalated_developer_name &&
-                                `Dev: ${comment.escalated_developer_name}`}
+                                `${t("ticketDetail.dev")} ${comment.escalated_developer_name}`}
                             </span>
                           )}
                         </div>
@@ -1691,19 +1819,61 @@ export const TicketDetail: React.FC = () => {
                       <div className="mt-2 flex justify-end">
                         {comment.escalation_returned_at ? (
                           <span className="text-xs text-emerald-600 font-medium bg-emerald-50 px-2 py-1 rounded-md border border-emerald-100">
-                            Returned on{" "}
+                            {t("ticketDetail.returnedOn")} {" "}
                             {new Date(
                               comment.escalation_returned_at,
                             ).toLocaleString()}
                           </span>
                         ) : (
-                          <button
-                            onClick={() => handleMarkReturned(comment.id)}
-                            className="text-xs bg-emerald-100 text-emerald-700 hover:bg-emerald-200 px-3 py-1.5 rounded-md font-medium transition-colors border border-emerald-200 shadow-sm flex items-center gap-1.5"
-                          >
-                            <CheckCircle2 size={14} />
-                            Mark as Returned
-                          </button>
+                          <div className="flex flex-col gap-2 w-full max-w-sm ms-auto">
+                            <div className="flex items-center gap-3 justify-end">
+                              <input 
+                                type="file" 
+                                id={`internal-return-${comment.id}`} 
+                                className="hidden" 
+                                accept=".sql,.py,.js,.txt,.zip,.pdf,.png,.jpg,.jpeg"
+                                onChange={(e) => {
+                                  if (e.target.files && e.target.files[0]) {
+                                    setInternalReturnFiles(prev => ({ ...prev, [comment.id]: e.target.files![0] }));
+                                  }
+                                }}
+                              />
+                              <label 
+                                htmlFor={`internal-return-${comment.id}`}
+                                className="text-xs text-slate-500 cursor-pointer hover:text-indigo-600 flex items-center gap-1.5 transition-colors"
+                              >
+                                <Paperclip size={14} />
+                                {internalReturnFiles[comment.id] ? (
+                                  <span className="font-medium text-indigo-600 truncate max-w-[120px]" title={internalReturnFiles[comment.id].name}>
+                                    {internalReturnFiles[comment.id].name}
+                                  </span>
+                                ) : (
+                                  "Attach file"
+                                )}
+                              </label>
+                              <button
+                                onClick={() => handleMarkReturned(comment.id)}
+                                disabled={uploadingInternalReturns[comment.id]}
+                                className="text-xs bg-emerald-100 text-emerald-700 hover:bg-emerald-200 px-3 py-1.5 rounded-md font-medium transition-colors border border-emerald-200 shadow-sm flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {uploadingInternalReturns[comment.id] ? (
+                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-emerald-700" />
+                                ) : (
+                                  <CheckCircle2 size={14} />
+                                )}
+                                {t("ticketDetail.markAsReturned")}
+                              </button>
+                            </div>
+                            {internalReturnFiles[comment.id] && (
+                              <input
+                                type="text"
+                                placeholder="What does this file do? (Optional) e.g. This script fixes the index issue."
+                                value={internalReturnDescriptions[comment.id] || ""}
+                                onChange={(e) => setInternalReturnDescriptions(prev => ({ ...prev, [comment.id]: e.target.value }))}
+                                className="w-full text-[11px] bg-slate-50/50 border border-slate-200 rounded px-2 py-1.5 text-slate-700 focus:outline-none focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 placeholder:text-slate-400"
+                              />
+                            )}
+                          </div>
                         )}
                       </div>
                     )}
@@ -1711,9 +1881,7 @@ export const TicketDetail: React.FC = () => {
                 </div>
               ))}
               {comments.length === 0 && (
-                <p className="text-sm text-slate-500 text-center py-4">
-                  No comments yet.
-                </p>
+                <p className="text-sm text-slate-500 text-center py-4">{t("ticketDetail.noComments")}</p>
               )}
             </div>
 
@@ -1722,13 +1890,13 @@ export const TicketDetail: React.FC = () => {
                 <textarea
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Type a comment..."
+                  placeholder={t("ticketDetail.typeComment")}
                   className="w-full bg-slate-50 border border-slate-200 rounded-[10px] p-3 pr-12 text-sm focus:outline-none focus:ring-1 focus:ring-[#f97316] focus:border-[#3B82F6] min-h-[100px] resize-y"
                 />
                 <button
                   onClick={handleAddComment}
                   disabled={!newComment.trim()}
-                  className="absolute bottom-3 right-3 w-8 h-8 bg-[#3B82F6] hover:bg-[#2563eb] disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-md flex items-center justify-center transition-colors shadow-sm"
+                  className="absolute bottom-3 end-3 w-8 h-8 bg-[#3B82F6] hover:bg-[#2563eb] disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-md flex items-center justify-center transition-colors shadow-sm"
                 >
                   <Send size={14} />
                 </button>
@@ -1742,9 +1910,7 @@ export const TicketDetail: React.FC = () => {
           {/* Details Card */}
           <div className="bg-white rounded-[10px] border border-slate-200 p-6 shadow-sm">
             <h3 className="text-xs font-bold text-slate-400 mb-6 uppercase tracking-wider flex items-center gap-2">
-              <FileText size={14} />
-              Ticket Details
-            </h3>
+              <FileText size={14} />{t("ticketDetail.ticketDetails")}</h3>
 
             <div className="flex flex-col">
               <div className="py-4 border-b border-slate-100 first:pt-0">
@@ -1752,14 +1918,10 @@ export const TicketDetail: React.FC = () => {
                   <div className="text-slate-400">
                     <Bot size={16} />
                   </div>
-                  <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">
-                    Status
-                  </div>
+                  <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">{t("ticketDetail.status")}</div>
                 </div>
-                <div className="pl-7 text-sm font-semibold text-slate-800 capitalize">
-                  {ticket.status?.status_name ||
-                    ticket.status_code ||
-                    ticket.status}
+                <div className="ps-7 text-sm font-semibold text-slate-800 capitalize">
+                  {t(`statusLabels.${(ticket.status?.status_code || ticket.status_code || ticket.status || '').toUpperCase()}`, { defaultValue: ticket.status?.status_name || ticket.status_code || ticket.status })}
                 </div>
               </div>
 
@@ -1768,27 +1930,25 @@ export const TicketDetail: React.FC = () => {
                   <div className="text-slate-400">
                     <AlertCircle size={16} />
                   </div>
-                  <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">
-                    Priority
-                  </div>
+                  <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">{t("ticketDetail.priority")}</div>
                 </div>
-                <div className="pl-7 flex items-center gap-2">
+                <div className="ps-7 flex items-center gap-2">
                   {isAdmin || ticket.assigned_to === user?.id ? (
                     <select
                       value={ticket.priority_id || ""}
                       onChange={handlePriorityChange}
                       disabled={updatingPriority}
-                      className="text-sm font-semibold text-slate-800 capitalize bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-[#3B82F6] focus:ring-[#3B82F6] rounded px-2 py-1 -ml-2 transition-colors cursor-pointer"
+                      className="text-sm font-semibold text-slate-800 capitalize bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-[#3B82F6] focus:ring-[#3B82F6] rounded px-2 py-1 -ms-2 transition-colors cursor-pointer"
                     >
                       {prioritiesList.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.priority_name}
+                          {t(`priorityLabels.${p.priority_name.toUpperCase()}`, { defaultValue: p.priority_name })}
                         </option>
                       ))}
                     </select>
                   ) : (
                     <span className="text-sm font-semibold text-slate-800 capitalize">
-                      {ticket.priority?.priority_name || ticket.priority}
+                      {t(`priorityLabels.${(ticket.priority?.priority_name || ticket.priority || 'MEDIUM').toUpperCase()}`, { defaultValue: ticket.priority?.priority_name || ticket.priority })}
                     </span>
                   )}
                 </div>
@@ -1799,11 +1959,9 @@ export const TicketDetail: React.FC = () => {
                   <div className="text-slate-400">
                     <Clock size={16} />
                   </div>
-                  <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">
-                    SLA Due Date
-                  </div>
+                  <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">{t("ticketDetail.slaDueDate")}</div>
                 </div>
-                <div className="pl-7">{renderSlaDueDate()}</div>
+                <div className="ps-7">{renderSlaDueDate()}</div>
               </div>
 
               <div className="py-4 border-b border-slate-100">
@@ -1811,11 +1969,9 @@ export const TicketDetail: React.FC = () => {
                   <div className="text-slate-400">
                     <User size={16} />
                   </div>
-                  <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">
-                    Customer
-                  </div>
+                  <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">{t("ticketDetail.customer")}</div>
                 </div>
-                <div className="pl-7 text-sm font-medium text-slate-800">
+                <div className="ps-7 text-sm font-medium text-slate-800">
                   {ticket.customer?.customer_name || "N/A"}
                 </div>
               </div>
@@ -1825,11 +1981,9 @@ export const TicketDetail: React.FC = () => {
                   <div className="text-slate-400">
                     <FileType size={16} />
                   </div>
-                  <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">
-                    Product
-                  </div>
+                  <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">{t("ticketDetail.product")}</div>
                 </div>
-                <div className="pl-7 text-sm font-medium text-slate-800">
+                <div className="ps-7 text-sm font-medium text-slate-800">
                   {ticket.product?.product_name || ticket.product_id || "N/A"}
                 </div>
               </div>
@@ -1839,12 +1993,12 @@ export const TicketDetail: React.FC = () => {
                   <div className="text-slate-400">
                     <Table size={16} />
                   </div>
-                  <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">
-                    Category
-                  </div>
+                  <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">{t("ticketDetail.category")}</div>
                 </div>
-                <div className="pl-7 text-sm font-medium text-slate-800">
-                  {ticket.category?.name || ticket.category || "N/A"}
+                <div className="ps-7 text-sm font-medium text-slate-800">
+                  {i18n.language === 'ar' && ticket.diagnostic_category?.category_name_ar 
+                    ? ticket.diagnostic_category.category_name_ar 
+                    : (ticket.diagnostic_category?.category_name || ticket.category?.name || ticket.category || "N/A")}
                 </div>
               </div>
 
@@ -1853,13 +2007,11 @@ export const TicketDetail: React.FC = () => {
                   <div className="text-slate-400">
                     <UserPlus size={16} />
                   </div>
-                  <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">
-                    Assigned To
-                  </div>
+                  <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">{t("ticketDetail.assignedTo")}</div>
                 </div>
-                <div className="pl-7">
+                <div className="ps-7">
                   <div className="text-sm font-medium text-slate-800">
-                    {ticket.assignedEngineerName || "Unassigned"}
+                    {ticket.assignedEngineerName || t("ticketDetail.unassigned")}
                   </div>
                   {isAdmin && ticket.assigned_to && ticket.assigned_at && (
                     <div className="text-[10px] text-slate-400 mt-0.5">
@@ -1869,6 +2021,7 @@ export const TicketDetail: React.FC = () => {
                         ["CLOSED", "APPROVED"].includes(
                           (ticket.status?.status_code || ticket.status_code || "").toUpperCase()
                         ),
+                        t
                       )}
                     </div>
                   )}
@@ -1880,18 +2033,14 @@ export const TicketDetail: React.FC = () => {
           {/* Timeline Card */}
           <div className="bg-white rounded-[10px] border border-slate-200 p-6 shadow-sm">
             <h3 className="text-xs font-bold text-slate-400 mb-6 uppercase tracking-wider flex items-center gap-2">
-              <Clock size={14} />
-              Timeline
-            </h3>
+              <Clock size={14} />{t("ticketDetail.timeline")}</h3>
 
-            <div className="relative pl-6 space-y-8 before:absolute before:inset-y-3 before:left-[11px] before:w-0.5 before:bg-slate-100">
+            <div className="relative ps-6 space-y-8 before:absolute before:inset-y-3 before:start-[11px] before:w-0.5 before:bg-slate-100">
               <div className="relative">
-                <div className="absolute -left-6 mt-1 w-5 h-5 rounded-full bg-[#3B82F6] border-[3px] border-white shadow-sm z-10 flex items-center justify-center">
+                <div className="absolute -start-6 mt-1 w-5 h-5 rounded-full bg-[#3B82F6] border-[3px] border-white shadow-sm z-10 flex items-center justify-center">
                   <div className="w-1.5 h-1.5 rounded-full bg-white"></div>
                 </div>
-                <div className="text-sm font-semibold text-slate-900">
-                  Created
-                </div>
+                <div className="text-sm font-semibold text-slate-900">{t("ticketDetail.created")}</div>
                 <div className="text-xs text-slate-500 mt-1">
                   {new Date(ticket.created_at).toLocaleString()}
                 </div>
@@ -1899,27 +2048,25 @@ export const TicketDetail: React.FC = () => {
 
               <div className="relative">
                 <div
-                  className={`absolute -left-6 mt-1 w-5 h-5 rounded-full border-[3px] border-white shadow-sm z-10 flex items-center justify-center ${ticket.assigned_to_name !== "Unassigned" ? "bg-[#3B82F6]" : "bg-white border-slate-300"}`}
+                  className={`absolute -start-6 mt-1 w-5 h-5 rounded-full border-[3px] border-white shadow-sm z-10 flex items-center justify-center ${ticket.assigned_to_name !== t("ticketDetail.unassigned") ? "bg-[#3B82F6]" : "bg-white border-slate-300"}`}
                 >
-                  {ticket.assigned_to_name !== "Unassigned" && (
+                  {ticket.assigned_to_name !== t("ticketDetail.unassigned") && (
                     <div className="w-1.5 h-1.5 rounded-full bg-white"></div>
                   )}
                 </div>
                 <div
-                  className={`text-sm font-semibold ${ticket.assigned_to_name !== "Unassigned" ? "text-slate-900" : "text-slate-500"}`}
-                >
-                  Assigned
-                </div>
+                  className={`text-sm font-semibold ${ticket.assigned_to_name !== t("ticketDetail.unassigned") ? "text-slate-900" : "text-slate-500"}`}
+                >{t("ticketDetail.assignedAgo")}</div>
                 <div className="text-xs text-slate-500 mt-1">
-                  {ticket.assigned_to_name !== "Unassigned"
+                  {ticket.assigned_to_name !== t("ticketDetail.unassigned")
                     ? ticket.assigned_to_name
-                    : "Pending assignment"}
+                    : t("ticketDetail.pendingAssignment")}
                 </div>
               </div>
 
               <div className="relative">
                 <div
-                  className={`absolute -left-6 mt-1 w-5 h-5 rounded-full border-[3px] border-white shadow-sm z-10 flex items-center justify-center ${["RESOLVED", "CLOSED", "APPROVED", "RESOLVED_PENDING_APPROVAL"].includes((ticket.status?.status_code || ticket.status_code || "").toUpperCase()) ? "bg-[#3B82F6]" : "bg-white border-slate-300"}`}
+                  className={`absolute -start-6 mt-1 w-5 h-5 rounded-full border-[3px] border-white shadow-sm z-10 flex items-center justify-center ${["RESOLVED", "CLOSED", "APPROVED", "RESOLVED_PENDING_APPROVAL"].includes((ticket.status?.status_code || ticket.status_code || "").toUpperCase()) ? "bg-[#3B82F6]" : "bg-white border-slate-300"}`}
                 >
                   {[
                     "RESOLVED",
@@ -1938,19 +2085,17 @@ export const TicketDetail: React.FC = () => {
                 </div>
                 <div
                   className={`text-sm font-semibold ${["RESOLVED", "CLOSED", "APPROVED", "RESOLVED_PENDING_APPROVAL"].includes((ticket.status?.status_code || ticket.status_code || "").toUpperCase()) ? "text-slate-900" : "text-slate-500"}`}
-                >
-                  Resolved
-                </div>
+                >{t("ticketDetail.resolved")}</div>
                 <div className="text-xs text-slate-500 mt-1">
                   {ticket.justification_submitted_at
-                    ? "Resolution submitted"
-                    : "Pending resolution"}
+                    ? t("ticketDetail.resolutionSubmitted")
+                    : t("ticketDetail.pendingResolution")}
                 </div>
               </div>
 
               <div className="relative">
                 <div
-                  className={`absolute -left-6 mt-1 w-5 h-5 rounded-full border-[3px] border-white shadow-sm z-10 flex items-center justify-center ${["CLOSED", "APPROVED"].includes((ticket.status?.status_code || ticket.status_code || "").toUpperCase()) ? "bg-[#3B82F6]" : "bg-white border-slate-300 outline outline-1 outline-dashed outline-slate-300"}`}
+                  className={`absolute -start-6 mt-1 w-5 h-5 rounded-full border-[3px] border-white shadow-sm z-10 flex items-center justify-center ${["CLOSED", "APPROVED"].includes((ticket.status?.status_code || ticket.status_code || "").toUpperCase()) ? "bg-[#3B82F6]" : "bg-white border-slate-300 outline outline-1 outline-dashed outline-slate-300"}`}
                 >
                   {["CLOSED", "APPROVED"].includes(
                     (
@@ -1964,17 +2109,15 @@ export const TicketDetail: React.FC = () => {
                 </div>
                 <div
                   className={`text-sm font-semibold ${["CLOSED", "APPROVED"].includes((ticket.status?.status_code || ticket.status_code || "").toUpperCase()) ? "text-slate-900" : "text-slate-500"}`}
-                >
-                  Closed
-                </div>
+                >{t("ticketDetail.closed")}</div>
                 <div className="text-xs text-slate-500 mt-1">
                   {(
                     ticket.status?.status_code ||
                     ticket.status_code ||
                     ""
                   ).toUpperCase() === "CLOSED"
-                    ? "Ticket completed"
-                    : "Awaiting final approval"}
+                    ? t("ticketDetail.ticketCompleted")
+                    : t("ticketDetail.awaitingFinalApproval")}
                 </div>
               </div>
             </div>
@@ -1987,9 +2130,7 @@ export const TicketDetail: React.FC = () => {
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-[10px] w-full max-w-lg shadow-xl overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b border-slate-100">
-              <h2 className="text-lg font-bold text-slate-800">
-                Resolve Ticket
-              </h2>
+              <h2 className="text-lg font-bold text-slate-800">{t("ticketDetail.resolveTicketTitle")}</h2>
               <button
                 onClick={() => setShowResolveModal(false)}
                 className="text-slate-400 hover:text-slate-600 transition-colors"
@@ -2016,7 +2157,7 @@ export const TicketDetail: React.FC = () => {
                 <textarea
                   value={justificationText}
                   onChange={(e) => setJustificationText(e.target.value)}
-                  placeholder="Describe the root cause and the steps taken to resolve the issue..."
+                  placeholder={t("ticketDetail.resolvePlaceholder")}
                   className="w-full h-32 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#f97316]/20 focus:border-[#3B82F6] resize-none"
                 />
               </div>
@@ -2026,9 +2167,7 @@ export const TicketDetail: React.FC = () => {
               <button
                 onClick={() => setShowResolveModal(false)}
                 className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors"
-              >
-                Cancel
-              </button>
+              >{t("ticketDetail.cancel")}</button>
               <button
                 onClick={handleResolveTicket}
                 disabled={resolving || !justificationText.trim()}
@@ -2037,12 +2176,12 @@ export const TicketDetail: React.FC = () => {
                 {resolving ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                    Submitting...
+                    {t("ticketDetail.submitting")}
                   </>
                 ) : (
                   <>
                     <CheckCircle2 size={16} />
-                    Submit for Approval
+                    {t("ticketDetail.submitForApproval")}
                   </>
                 )}
               </button>
@@ -2057,9 +2196,7 @@ export const TicketDetail: React.FC = () => {
           <div className="bg-white rounded-[10px] w-full max-w-lg shadow-xl overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b border-slate-100">
               <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <Lock size={20} className="text-indigo-600" />
-                Internal Escalation Note
-              </h2>
+                <Lock size={20} className="text-indigo-600" />{t("ticketDetail.internalEscalationNote")}</h2>
               <button
                 onClick={() => setShowEscalateModal(false)}
                 className="text-slate-400 hover:text-slate-600 transition-colors"
@@ -2079,15 +2216,14 @@ export const TicketDetail: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                    Escalate to Team <span className="text-red-500">*</span>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">{t("ticketDetail.escalateToTeam")} <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={escalatedTeamId}
                     onChange={(e) => setEscalatedTeamId(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   >
-                    <option value="">Select a team...</option>
+                    <option value="">{t("ticketDetail.selectTeam")}</option>
                     {teams.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.team_name}
@@ -2098,18 +2234,16 @@ export const TicketDetail: React.FC = () => {
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                     Developer Name{" "}
-                    <span className="text-slate-400 font-normal">
-                      (Optional)
-                    </span>
+                    <span className="text-slate-400 font-normal">{t("ticketDetail.optional")}</span>
                   </label>
                   {loadingTeamDevelopers ? (
                     <div className="flex items-center gap-2 text-sm text-slate-500 py-2">
                       <div className="w-4 h-4 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
-                      Loading developers...
+                      {t("ticketDetail.loadingDevelopers")}
                     </div>
                   ) : escalatedTeamId && teamDevelopers.length === 0 ? (
                     <div className="text-sm text-slate-500 py-2 italic bg-slate-50 border border-slate-100 rounded-lg px-3">
-                      No developers registered for this team yet
+                      {t("ticketDetail.noDevelopers")}
                     </div>
                   ) : (
                     <select
@@ -2118,7 +2252,7 @@ export const TicketDetail: React.FC = () => {
                       disabled={!escalatedTeamId}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
                     >
-                      <option value="">Select a developer...</option>
+                      <option value="">{t("ticketDetail.selectDeveloper")}</option>
                       {teamDevelopers.map((dev: any, idx: number) => (
                         <option key={idx} value={dev.full_name}>
                           {dev.full_name}
@@ -2130,13 +2264,12 @@ export const TicketDetail: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                  Internal Note <span className="text-red-500">*</span>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">{t("ticketDetail.internalNoteLabel")} <span className="text-red-500">*</span>
                 </label>
                 <textarea
                   value={escalationNote}
                   onChange={(e) => setEscalationNote(e.target.value)}
-                  placeholder="Details of the escalation..."
+                  placeholder={t("ticketDetail.internalNotePlaceholder")}
                   className="w-full h-24 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
                 />
               </div>
@@ -2146,9 +2279,7 @@ export const TicketDetail: React.FC = () => {
               <button
                 onClick={() => setShowEscalateModal(false)}
                 className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors"
-              >
-                Cancel
-              </button>
+              >{t("ticketDetail.cancel")}</button>
               <button
                 onClick={handleSaveEscalation}
                 disabled={
@@ -2159,12 +2290,12 @@ export const TicketDetail: React.FC = () => {
                 {savingEscalation ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                    Saving...
+                    {t("ticketDetail.saving")}
                   </>
                 ) : (
                   <>
                     <Lock size={16} />
-                    Save Internal Note
+                    {t("ticketDetail.saveInternalNote")}
                   </>
                 )}
               </button>

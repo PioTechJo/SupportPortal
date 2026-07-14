@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { useTranslation } from 'react-i18next';
 
 interface QuestionModalProps {
   categoryId: string;
@@ -9,7 +10,9 @@ interface QuestionModalProps {
 }
 
 export const QuestionModal: React.FC<QuestionModalProps> = ({ categoryId, question, onClose, onSaved }) => {
+  const { t } = useTranslation();
   const [questionText, setQuestionText] = useState('');
+  const [questionTextAr, setQuestionTextAr] = useState('');
   const [questionType, setQuestionType] = useState('single_choice');
   const [displayOrder, setDisplayOrder] = useState<number>(0);
   const [newOptions, setNewOptions] = useState<{text: string, point_value: number}[]>([]);
@@ -20,7 +23,8 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ categoryId, questi
 
   useEffect(() => {
     if (question) {
-      setQuestionText(question.question_text);
+      setQuestionText(question.question_text || '');
+      setQuestionTextAr(question.question_text_ar || '');
       setQuestionType(question.question_type);
       setDisplayOrder(question.display_order);
     }
@@ -35,6 +39,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ categoryId, questi
       const payload = {
         category_id: categoryId,
         question_text: questionText,
+        question_text_ar: questionTextAr,
         question_type: questionType,
         display_order: displayOrder
       };
@@ -91,7 +96,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ categoryId, questi
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-[10px] shadow-sm border border-slate-200 w-full max-w-md overflow-hidden animate-in zoom-in-95">
         <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
-          <h2 className="text-xl font-bold text-slate-800">{question ? 'Edit Question' : 'New Question'}</h2>
+          <h2 className="text-xl font-bold text-slate-800">{question ? t('diagnosticBuilder.editQuestion') : t('diagnosticBuilder.newQuestion')}</h2>
           <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-md transition-colors">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -102,19 +107,31 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ categoryId, questi
           {error && <div className="p-3 bg-red-50 text-red-700 text-[13px] rounded-[8px] border border-red-200">{error}</div>}
           
           <div>
-            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Question Text *</label>
+            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">{t('diagnosticBuilder.questionText')} *</label>
             <input
               required
               type="text"
               value={questionText}
               onChange={e => setQuestionText(e.target.value)}
               className="w-full rounded-[8px] border-slate-200 focus:border-[#f97316] focus:ring-[#f97316] text-[14px] shadow-sm py-2 px-3"
-              placeholder="e.g. Is the issue intermittent?"
+              placeholder=""
             />
           </div>
 
           <div>
-            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Question Type *</label>
+            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">{t('diagnosticBuilder.questionTextAr')}</label>
+            <input
+              type="text"
+              value={questionTextAr}
+              onChange={e => setQuestionTextAr(e.target.value)}
+              className="w-full rounded-[8px] border-slate-200 focus:border-[#f97316] focus:ring-[#f97316] text-[14px] shadow-sm py-2 px-3 text-right"
+              dir="rtl"
+              placeholder=""
+            />
+          </div>
+
+          <div>
+            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">{t('diagnosticBuilder.questionType')} *</label>
             <select
               required
               value={questionType}
@@ -122,14 +139,14 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ categoryId, questi
               className="w-full rounded-[8px] border-slate-200 focus:border-[#f97316] focus:ring-[#f97316] text-[14px] shadow-sm py-2 px-3"
               disabled={!!question}
             >
-              <option value="single_choice">Single Choice (Dropdown/Radio)</option>
+              <option value="single_choice">{t('diagnosticBuilder.singleChoiceDropdown')}</option>
             </select>
           </div>
 
           {/* Inline Options Builder for New Single Choice Questions */}
           {!question && questionType === 'single_choice' && (
             <div className="bg-slate-50 rounded-[8px] border border-slate-200 p-4 space-y-3">
-              <label className="block text-[13px] font-medium text-slate-700">Answer Options</label>
+              <label className="block text-[13px] font-medium text-slate-700">{t('diagnosticBuilder.answerOptions')}</label>
               
               <div className="flex gap-2">
                 <input
@@ -150,9 +167,9 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ categoryId, questi
                   onChange={e => setOptionPointValue(parseInt(e.target.value))}
                   className="rounded-[8px] border-slate-200 focus:border-[#f97316] focus:ring-[#f97316] text-[13px] shadow-sm py-1.5 px-2"
                 >
-                  <option value={0}>Low (0)</option>
-                  <option value={5}>Medium (5)</option>
-                  <option value={10}>High (10)</option>
+                  <option value={0}>{t('diagnosticBuilder.low')} (0)</option>
+                  <option value={5}>{t('diagnosticBuilder.medium')} (5)</option>
+                  <option value={10}>{t('diagnosticBuilder.high')} (10)</option>
                 </select>
                 <button 
                   type="button" 
@@ -160,7 +177,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ categoryId, questi
                   disabled={!optionInput.trim()}
                   className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-[13px] font-medium rounded-[8px] disabled:opacity-50 transition-colors"
                 >
-                  Add
+                  {t('diagnosticBuilder.add')}
                 </button>
               </div>
 
@@ -170,12 +187,12 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ categoryId, questi
                     <div key={idx} className="flex items-center gap-1.5 bg-white border border-slate-200 px-2.5 py-1 rounded-md shadow-sm">
                       <span className="text-[13px] text-slate-700">{opt.text}</span>
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${opt.point_value >= 10 ? 'bg-red-100 text-red-700' : opt.point_value === 5 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
-                        {opt.point_value || 0} pts
+                        {opt.point_value || 0} {t('diagnosticBuilder.pts')}
                       </span>
                       <button 
                         type="button" 
                         onClick={() => handleRemoveOption(idx)}
-                        className="text-slate-400 hover:text-red-500 flex items-center justify-center rounded-sm ml-1"
+                        className="text-slate-400 hover:text-red-500 flex items-center justify-center rounded-sm ms-1"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                       </button>
@@ -187,7 +204,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ categoryId, questi
           )}
 
           <div>
-            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Display Order *</label>
+            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">{t('diagnosticBuilder.displayOrder')} *</label>
             <input
               required
               type="number"
@@ -198,9 +215,9 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ categoryId, questi
           </div>
 
           <div className="pt-5 border-t border-slate-200 flex justify-end gap-3 mt-6">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-[14px] font-medium text-slate-600 hover:bg-slate-100 border border-transparent rounded-[8px] transition-colors">Cancel</button>
+            <button type="button" onClick={onClose} className="px-4 py-2 text-[14px] font-medium text-slate-600 hover:bg-slate-100 border border-transparent rounded-[8px] transition-colors">{t('diagnosticBuilder.cancel')}</button>
             <button type="submit" disabled={isSaving || (!question && questionType === 'single_choice' && newOptions.length === 0)} className="px-5 py-2 text-[14px] font-medium text-white bg-[#f97316] hover:bg-[#ea580c] rounded-[8px] disabled:opacity-50 transition-colors flex items-center gap-2">
-              {isSaving ? 'Saving...' : 'Save Question'}
+              {isSaving ? t('diagnosticBuilder.saving') : t('diagnosticBuilder.saveQuestion')}
             </button>
           </div>
         </form>

@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { useTenant } from '../context/TenantContext';
 import { useAuth } from '../context/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import Papa from 'papaparse';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell 
@@ -20,6 +21,7 @@ const COLORS = ['#3B82F6', '#14b8a6', '#6366f1', '#ec4899', '#8b5cf6', '#f59e0b'
 const MultiSelect = ({ options, selectedValues, onChange, placeholder }: { options: {id: string, name: string}[], selectedValues: string[], onChange: (vals: string[]) => void, placeholder: string }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const { t } = useTranslation();
 
   const toggle = (id: string) => {
     if (selectedValues.includes(id)) {
@@ -39,8 +41,8 @@ const MultiSelect = ({ options, selectedValues, onChange, placeholder }: { optio
         onClick={() => setIsOpen(!isOpen)}
         className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900 flex items-center gap-2 max-w-[170px]"
       >
-        <span className="truncate flex-1 text-left">
-          {selectedValues.length === 0 ? placeholder : `${selectedValues.length} Selected`}
+        <span className="truncate flex-1 text-start">
+          {selectedValues.length === 0 ? placeholder : `${selectedValues.length} ${t('overview.selected')}`}
         </span>
         <ChevronDown size={12} className="text-slate-400 shrink-0" />
       </button>
@@ -50,7 +52,7 @@ const MultiSelect = ({ options, selectedValues, onChange, placeholder }: { optio
           <div className="p-2 border-b border-slate-100 bg-white rounded-t-lg">
             <input
               type="text"
-              placeholder={`Search...`}
+              placeholder={t('overview.search')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500 transition-colors"
@@ -58,13 +60,13 @@ const MultiSelect = ({ options, selectedValues, onChange, placeholder }: { optio
           </div>
           <div className="max-h-48 overflow-y-auto py-1">
             {filteredOptions.length === 0 ? (
-              <div className="px-3 py-4 text-center text-xs text-slate-400 italic">No banks found</div>
+              <div className="px-3 py-4 text-center text-xs text-slate-400 italic">{t('overview.noBanksFound')}</div>
             ) : (
               filteredOptions.map(opt => (
                 <button 
                   key={opt.id}
                   onClick={() => toggle(opt.id)}
-                  className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 text-slate-700 hover:bg-slate-50 transition-colors"
+                  className="w-full text-start px-3 py-2 text-xs flex items-center gap-2 text-slate-700 hover:bg-slate-50 transition-colors"
                 >
                   <div className={`w-3 h-3 rounded flex items-center justify-center shrink-0 border ${selectedValues.includes(opt.id) ? 'bg-blue-500 border-blue-500 text-white' : 'border-slate-300'}`}>
                     {selectedValues.includes(opt.id) && <Check size={10} />}
@@ -94,6 +96,7 @@ export const Overview: React.FC = () => {
   const { tenants } = useTenant();
   const { tickets: dashboardTickets, activeTicketsCount, isLoading: dashLoading } = useTickets();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const userRoleUp = user?.role_code?.toUpperCase() || '';
   const isAdmin = ['ADMIN', 'ADMINISTRATOR', 'SYS_ADMIN', 'CEO', 'SUPPORT_MANAGER'].includes(userRoleUp);
@@ -333,12 +336,12 @@ export const Overview: React.FC = () => {
       <div className="bg-white p-6 md:p-8 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-slate-900">
-            Ahlan, {user?.full_name}!
+            {t('overview.welcome', { name: user?.full_name })}
           </h2>
           <p className="text-sm text-slate-500 mt-1">
             {user?.role_code === 'client' 
-              ? `Authorized coordinator for Saudi bank settlements & software channels.` 
-              : `Admin console of PIO-TECH active support queue.`}
+              ? t('overview.clientSubtitle') 
+              : t('overview.adminSubtitle')}
           </p>
         </div>
         {!isAdmin && (
@@ -347,7 +350,7 @@ export const Overview: React.FC = () => {
             className="flex items-center gap-2.5 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 rounded-lg shadow-sm transition cursor-pointer"
           >
             <Plus size={16} />
-            File Support Ticket
+            {t('overview.fileTicket')}
           </button>
         )}
       </div>
@@ -355,16 +358,16 @@ export const Overview: React.FC = () => {
       {/* Admin Analytics Filters */}
       <div className="bg-white p-4 rounded-xl shadow-xs border border-slate-200 flex flex-wrap gap-4 items-center justify-between">
         <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
-          <Filter size={16} className="text-slate-500" /> Analytics Filters
+          <Filter size={16} className="text-slate-500" /> {t('overview.analyticsFilters')}
         </div>
         <div className="flex flex-wrap gap-2.5 items-center bg-slate-50 p-2 rounded-lg border border-slate-200">
-          <MultiSelect options={tenants.map(t => ({ id: t.id, name: t.name }))} selectedValues={selectedCustomerIds} onChange={setSelectedCustomerIds} placeholder="All Banks" />
+          <MultiSelect options={tenants.map(t => ({ id: t.id, name: t.name }))} selectedValues={selectedCustomerIds} onChange={setSelectedCustomerIds} placeholder={t('overview.allBanks')} />
           <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1 focus-within:ring-1 focus-within:ring-blue-500">
             <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="bg-transparent text-slate-900 text-xs outline-none w-[110px]" />
-            <span className="text-slate-400 text-xs">to</span>
+            <span className="text-slate-400 text-xs">{t('overview.to')}</span>
             <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="bg-transparent text-slate-900 text-xs outline-none w-[110px]" />
           </div>
-          <MultiSelect options={uniqueEngineers} selectedValues={selectedEngineers} onChange={setSelectedEngineers} placeholder="All Engineers" />
+          <MultiSelect options={uniqueEngineers} selectedValues={selectedEngineers} onChange={setSelectedEngineers} placeholder={t('overview.allEngineers')} />
           <button onClick={handleExportCSV} className="flex items-center gap-1.5 bg-blue-500 hover:bg-blue-600 text-white font-semibold px-3.5 py-1.5 rounded-lg text-xs transition shadow-sm cursor-pointer">
             <FileSpreadsheet size={13} /> Export CSV
           </button>
@@ -383,12 +386,12 @@ export const Overview: React.FC = () => {
             onClick={() => navigate('/tickets?status=new')}
           >
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs uppercase font-bold tracking-wider">New</span>
+              <span className="text-xs uppercase font-bold tracking-wider">{t('overview.new')}</span>
               <Inbox size={18} className="text-blue-600" />
             </div>
             <div className="mt-2.5">
               <span className="text-3xl font-bold text-slate-900">{metrics.newTickets}</span>
-              <span className="text-[10.5px] text-slate-500 block mt-1">Recently submitted tickets</span>
+              <span className="text-[10.5px] text-slate-500 block mt-1">{t('overview.newDesc')}</span>
             </div>
           </div>
 
@@ -397,12 +400,12 @@ export const Overview: React.FC = () => {
             onClick={() => navigate('/tickets?status=reopened')}
           >
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs uppercase font-bold tracking-wider">Reopened</span>
+              <span className="text-xs uppercase font-bold tracking-wider">{t('overview.reopened')}</span>
               <RotateCcw size={18} className="text-indigo-600" />
             </div>
             <div className="mt-2.5">
               <span className="text-3xl font-bold text-slate-900">{metrics.reopenedTickets}</span>
-              <span className="text-[10.5px] text-slate-500 block mt-1">Returned by customers</span>
+              <span className="text-[10.5px] text-slate-500 block mt-1">{t('overview.reopenedDesc')}</span>
             </div>
           </div>
           
@@ -411,12 +414,12 @@ export const Overview: React.FC = () => {
             onClick={() => navigate('/tickets?status=in_progress')}
           >
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs uppercase font-bold tracking-wider">In Progress</span>
+              <span className="text-xs uppercase font-bold tracking-wider">{t('overview.inProgress')}</span>
               <Activity size={18} className="text-blue-500" />
             </div>
             <div className="mt-2.5">
               <span className="text-3xl font-bold text-slate-900">{metrics.inProgressTickets}</span>
-              <span className="text-[10.5px] text-slate-500 block mt-1">Currently under investigation</span>
+              <span className="text-[10.5px] text-slate-500 block mt-1">{t('overview.inProgressDesc')}</span>
             </div>
           </div>
 
@@ -425,12 +428,12 @@ export const Overview: React.FC = () => {
             onClick={() => navigate('/tickets?escalated=true')}
           >
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs uppercase font-bold tracking-wider">Escalated</span>
+              <span className="text-xs uppercase font-bold tracking-wider">{t('overview.escalated')}</span>
               <AlertTriangle size={18} className="text-red-500" />
             </div>
             <div className="mt-2.5">
               <span className="text-3xl font-bold text-slate-900">{escalationMetrics.totalEscalations}</span>
-              <span className="text-[10.5px] text-slate-500 block mt-1">Tickets with internal escalation</span>
+              <span className="text-[10.5px] text-slate-500 block mt-1">{t('overview.escalatedDesc')}</span>
             </div>
           </div>
 
@@ -439,12 +442,12 @@ export const Overview: React.FC = () => {
             onClick={() => navigate('/tickets?status=closed')}
           >
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs uppercase font-bold tracking-wider">Closed</span>
+              <span className="text-xs uppercase font-bold tracking-wider">{t('overview.closed')}</span>
               <CheckCircle2 size={18} className="text-emerald-600" />
             </div>
             <div className="mt-2.5">
               <span className="text-3xl font-bold text-slate-900">{metrics.closedTickets}</span>
-              <span className="text-[10.5px] text-slate-500 block mt-1">Resolved and closed tickets</span>
+              <span className="text-[10.5px] text-slate-500 block mt-1">{t('overview.closedDesc')}</span>
             </div>
           </div>
         </div>
@@ -454,13 +457,13 @@ export const Overview: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* By Bank */}
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs flex flex-col">
-          <div className="border-b border-slate-100 pb-3 mb-4 text-left">
-            <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm"><Building size={16} className="text-slate-500" /> Tickets by Bank</h3>
-            <p className="text-xs text-slate-500 mt-1">Total volume across top clients.</p>
+          <div className="border-b border-slate-100 pb-3 mb-4 text-start">
+            <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm"><Building size={16} className="text-slate-500" /> {t('overview.ticketsByBank')}</h3>
+            <p className="text-xs text-slate-500 mt-1">{t('overview.ticketsByBankDesc')}</p>
           </div>
           <div className="h-72 w-full">
             {customerChartData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-xs text-slate-400 italic">No bank ticket data logged for this timeframe.</div>
+              <div className="h-full flex items-center justify-center text-xs text-slate-400 italic">{t('overview.noBankData')}</div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={customerChartData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
@@ -489,13 +492,13 @@ export const Overview: React.FC = () => {
         
         {/* By Product */}
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs flex flex-col">
-          <div className="border-b border-slate-100 pb-3 mb-4 text-left">
-            <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm"><Inbox size={16} className="text-slate-500" /> Tickets by Product</h3>
-            <p className="text-xs text-slate-500 mt-1">Distribution across products and modules.</p>
+          <div className="border-b border-slate-100 pb-3 mb-4 text-start">
+            <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm"><Inbox size={16} className="text-slate-500" /> {t('overview.ticketsByProduct')}</h3>
+            <p className="text-xs text-slate-500 mt-1">{t('overview.ticketsByProductDesc')}</p>
           </div>
           <div className="h-72 w-full flex flex-col sm:flex-row justify-center items-center gap-4">
             {productChartData.length === 0 ? (
-              <div className="flex items-center justify-center text-xs text-slate-400 italic">No products referenced in tickets.</div>
+              <div className="flex items-center justify-center text-xs text-slate-400 italic">{t('overview.noProductData')}</div>
             ) : (
               <>
                 <div className="h-48 w-48 shrink-0">
@@ -508,7 +511,7 @@ export const Overview: React.FC = () => {
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="flex-1 space-y-2 max-h-48 overflow-y-auto w-full text-left">
+                <div className="flex-1 space-y-2 max-h-48 overflow-y-auto w-full text-start">
                   {productChartData.map((entry, index) => (
                     <div key={entry.name} className="flex items-start gap-2 text-xs">
                       <span className="w-3 h-3 rounded mt-[2px] shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
@@ -527,19 +530,19 @@ export const Overview: React.FC = () => {
 
       {/* Engineer Performance Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="p-6 border-b border-slate-100 text-left">
-          <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm"><Users size={16} className="text-slate-500" /> Engineer Performance</h3>
+        <div className="p-6 border-b border-slate-100 text-start">
+          <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm"><Users size={16} className="text-slate-500" /> {t('overview.engineerPerformance')}</h3>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[600px] border-collapse text-left text-xs text-slate-700">
+          <table className="w-full min-w-[600px] border-collapse text-start text-xs text-slate-700">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
-                <th className="py-3 px-6">Engineer</th><th className="py-3 px-6 text-center">Active Queue</th><th className="py-3 px-6 text-center">Resolved</th><th className="py-3 px-6 text-center">Avg Resolution Speed</th><th className="py-3 px-6">Status</th>
+                <th className="py-3 px-6">{t('overview.engineer')}</th><th className="py-3 px-6 text-center">{t('overview.activeQueue')}</th><th className="py-3 px-6 text-center">{t('overview.resolved')}</th><th className="py-3 px-6 text-center">{t('overview.avgResolutionSpeed')}</th><th className="py-3 px-6">{t('overview.status')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {agentPerformance.length === 0 ? (
-                <tr><td colSpan={5} className="py-8 text-center text-slate-400 italic">No engineer actions logged.</td></tr>
+                <tr><td colSpan={5} className="py-8 text-center text-slate-400 italic">{t('overview.noEngineerActions')}</td></tr>
               ) : (
                 agentPerformance.map(agent => (
                   <tr 
@@ -555,7 +558,7 @@ export const Overview: React.FC = () => {
                     <td className="py-4 px-6 text-center font-medium text-emerald-600">{agent.resolved}</td>
                     <td className="py-4 px-6 text-center font-bold text-slate-700">{agent.avgTime} days</td>
                     <td className="py-4 px-6">
-                      {agent.assigned > 5 ? <span className="bg-red-50 text-red-700 border border-red-100 font-medium px-2 py-0.5 rounded text-xs">High Load</span> : <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 font-medium px-2 py-0.5 rounded text-xs">Active</span>}
+                      {agent.assigned > 5 ? <span className="bg-red-50 text-red-700 border border-red-100 font-medium px-2 py-0.5 rounded text-xs">{t('overview.highLoad')}</span> : <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 font-medium px-2 py-0.5 rounded text-xs">{t('overview.active')}</span>}
                     </td>
                   </tr>
                 ))
@@ -566,24 +569,24 @@ export const Overview: React.FC = () => {
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="p-6 border-b border-slate-100 text-left">
-          <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm"><Users size={16} className="text-slate-500" /> Developer Workload</h3>
+        <div className="p-6 border-b border-slate-100 text-start">
+          <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm"><Users size={16} className="text-slate-500" /> {t('overview.developerWorkload')}</h3>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-left text-xs text-slate-700">
+          <table className="w-full border-collapse text-start text-xs text-slate-700">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
-                <th className="py-3 px-6">Developer</th>
-                <th className="py-3 px-6">Team</th>
-                <th className="py-3 px-6 text-center">Total Escalations</th>
-                <th className="py-3 px-6 text-center">Pending</th>
-                <th className="py-3 px-6 text-center">Returned</th>
-                <th className="py-3 px-6 text-right">Action</th>
+                <th className="py-3 px-6">{t('overview.developer')}</th>
+                <th className="py-3 px-6">{t('overview.team')}</th>
+                <th className="py-3 px-6 text-center">{t('overview.totalEscalations')}</th>
+                <th className="py-3 px-6 text-center">{t('overview.pending')}</th>
+                <th className="py-3 px-6 text-center">{t('overview.returned')}</th>
+                <th className="py-3 px-6 text-end">{t('overview.action')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {developerWorkload.length === 0 ? (
-                <tr><td colSpan={6} className="py-8 text-center text-slate-400 italic">No developers currently have escalations assigned.</td></tr>
+                <tr><td colSpan={6} className="py-8 text-center text-slate-400 italic">{t('overview.noDevelopers')}</td></tr>
               ) : (
                 developerWorkload.map((dev) => (
                   <tr 
@@ -596,9 +599,9 @@ export const Overview: React.FC = () => {
                     <td className="py-3 px-6 text-center font-bold text-slate-700">{dev.total}</td>
                     <td className={`py-3 px-6 text-center font-bold ${dev.pending > 0 ? 'text-orange-500' : 'text-slate-400'}`}>{dev.pending}</td>
                     <td className="py-3 px-6 text-center font-bold text-emerald-600">{dev.returned}</td>
-                    <td className="py-3 px-6 text-right">
+                    <td className="py-3 px-6 text-end">
                       <span className="text-indigo-600 font-medium text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-end gap-1">
-                        View tickets <ChevronRight size={14} />
+                        {t('overview.viewTickets')} <ChevronRight size={14} className="rtl:rotate-180" />
                       </span>
                     </td>
                   </tr>
@@ -611,27 +614,27 @@ export const Overview: React.FC = () => {
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden mt-6">
         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm"><List size={16} className="text-slate-500" /> Escalation Details</h3>
+          <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm"><List size={16} className="text-slate-500" /> {t('overview.escalationDetails')}</h3>
           <div className="flex items-center gap-2 w-[400px]">
             <div className="flex-1">
-              <MultiSelect options={escalationTeamOptions} selectedValues={selectedEscalationTeams} onChange={setSelectedEscalationTeams} placeholder="Filter by Team" />
+              <MultiSelect options={escalationTeamOptions} selectedValues={selectedEscalationTeams} onChange={setSelectedEscalationTeams} placeholder={t("overview.filterByTeam")} />
             </div>
             <div className="flex-1">
-              <MultiSelect options={escalationDeveloperOptions} selectedValues={selectedEscalationDevelopers} onChange={setSelectedEscalationDevelopers} placeholder="Filter by Developer" />
+              <MultiSelect options={escalationDeveloperOptions} selectedValues={selectedEscalationDevelopers} onChange={setSelectedEscalationDevelopers} placeholder={t("overview.filterByDeveloper")} />
             </div>
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[800px] border-collapse text-left text-xs text-slate-700">
+          <table className="w-full min-w-[800px] border-collapse text-start text-xs text-slate-700">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
-                <th className="py-3 px-6 w-32">Ticket #</th><th className="py-3 px-6">Subject</th><th className="py-3 px-6">Assigned Engineer</th><th className="py-3 px-6">Escalated To</th><th className="py-3 px-6">Developer</th><th className="py-3 px-6">Escalated On</th><th className="py-3 px-6">Returned On</th><th className="py-3 px-6 text-right">Duration</th>
+                <th className="py-3 px-6 w-32">{t('overview.ticketNo')}</th><th className="py-3 px-6">{t('overview.subject')}</th><th className="py-3 px-6">{t('overview.assignedEngineer')}</th><th className="py-3 px-6">{t('overview.escalatedTo')}</th><th className="py-3 px-6">{t('overview.developer')}</th><th className="py-3 px-6">{t('overview.escalatedOn')}</th><th className="py-3 px-6">{t('overview.returnedOn')}</th><th className="py-3 px-6 text-end">{t('overview.duration')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {displayedEscalations.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-slate-400 italic">No escalations match the selected filters.</td>
+                  <td colSpan={8} className="py-8 text-center text-slate-400 italic">{t('overview.noEscalations')}</td>
                 </tr>
               ) : (
                 displayedEscalations.map((esc: any) => (
@@ -650,8 +653,8 @@ export const Overview: React.FC = () => {
                     <td className="py-3 px-6 font-medium text-slate-900">{esc.teams?.team_name || 'Unknown Team'}</td>
                     <td className="py-3 px-6 text-slate-500">{esc.escalated_developer_name || '—'}</td>
                     <td className="py-3 px-6 text-slate-600">{new Date(esc.created_at).toLocaleString()}</td>
-                    <td className="py-3 px-6">{esc.escalation_returned_at ? <span className="text-emerald-600 font-medium">{new Date(esc.escalation_returned_at).toLocaleString()}</span> : <span className="text-orange-500 font-medium">Pending</span>}</td>
-                    <td className="py-3 px-6 text-right">
+                    <td className="py-3 px-6">{esc.escalation_returned_at ? <span className="text-emerald-600 font-medium">{new Date(esc.escalation_returned_at).toLocaleString()}</span> : <span className="text-orange-500 font-medium">{t('overview.pending')}</span>}</td>
+                    <td className="py-3 px-6 text-end">
                       {esc.escalation_returned_at ? (
                         <span className="font-bold text-slate-700">{formatDuration(esc.created_at, esc.escalation_returned_at)}</span>
                       ) : (
@@ -671,15 +674,15 @@ export const Overview: React.FC = () => {
       {/* Recent Tickets */}
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
         <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-          <h3 className="font-bold text-slate-950 text-sm uppercase tracking-wider">Recent Ticket Intake</h3>
-          <button onClick={() => navigate('/tickets')} className="text-xs text-teal-600 hover:text-teal-700 font-semibold cursor-pointer">View All</button>
+          <h3 className="font-bold text-slate-950 text-sm uppercase tracking-wider">{t('overview.recentTicketIntake')}</h3>
+          <button onClick={() => navigate('/tickets')} className="text-xs text-teal-600 hover:text-teal-700 font-semibold cursor-pointer">{t('overview.viewAll')}</button>
         </div>
         {dashLoading ? (
           <div className="space-y-4 mt-4">
             {[1,2,3].map((i) => <div key={i} className="animate-pulse flex gap-3"><div className="w-10 h-10 bg-slate-100 rounded-lg shrink-0" /><div className="flex-1 space-y-1.5 pt-1"><div className="h-3 bg-slate-100 rounded w-3/4" /><div className="h-2 bg-slate-100 rounded w-1/2" /></div></div>)}
           </div>
         ) : currentAndRecent.length === 0 ? (
-          <div className="py-12 text-center text-slate-400 text-xs">No tickets documented.</div>
+          <div className="py-12 text-center text-slate-400 text-xs">{t('overview.noTickets')}</div>
         ) : (
           <div className="divide-y divide-slate-100 mt-2">
             {currentAndRecent.map((ticket) => (
@@ -693,7 +696,7 @@ export const Overview: React.FC = () => {
                     <span className={`text-[9px] font-semibold uppercase tracking-wider px-1.5 border rounded-full leading-none py-0.5 ${getStatusStyle(ticket.status_code || ticket.status)}`}>{ticket.status_code ? ticket.status_code.replace('_', ' ') : ticket.status}</span>
                   </div>
                 </div>
-                <ChevronRight size={14} className="text-slate-300 self-center" />
+                <ChevronRight size={14} className="text-slate-300 self-center rtl:rotate-180" />
               </div>
             ))}
           </div>

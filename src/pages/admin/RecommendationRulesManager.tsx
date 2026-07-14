@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { CategorySelector } from '../../components/admin/rules/CategorySelector';
 import { RulesList } from '../../components/admin/rules/RulesList';
 import { RuleEditor } from '../../components/admin/rules/RuleEditor';
+import { useTranslation } from 'react-i18next';
 
 export const RecommendationRulesManager: React.FC = () => {
+  const { t } = useTranslation();
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [isEditing, setIsEditing] = useState(false);
   const [ruleToEdit, setRuleToEdit] = useState<any>(null);
@@ -28,8 +30,8 @@ export const RecommendationRulesManager: React.FC = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Recommendation Rules Manager</h2>
-          <p className="text-slate-500 mt-1">Manage the logic engine that suggests solutions to customers.</p>
+          <h2 className="text-2xl font-bold text-slate-800">{t('recommendationRules.managerTitle')}</h2>
+          <p className="text-slate-500 mt-1">{t('recommendationRules.managerSubtitle')}</p>
         </div>
       </div>
 
@@ -48,7 +50,7 @@ export const RecommendationRulesManager: React.FC = () => {
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              Create Rule
+              {t('recommendationRules.createRule')}
             </button>
           )}
         </div>
@@ -61,10 +63,10 @@ export const RecommendationRulesManager: React.FC = () => {
           />
         ) : (
           <div className="p-12 text-center border-2 border-dashed border-slate-200 rounded-xl">
-            <div className="text-4xl mb-4">🧠</div>
-            <h3 className="text-lg font-semibold text-slate-800 mb-2">Select a category to manage rules</h3>
+            <div className="text-4xl mb-4">🔮</div>
+            <h3 className="text-lg font-semibold text-slate-800 mb-2">{t('recommendationRules.selectCategoryManage')}</h3>
             <p className="text-slate-500 max-w-md mx-auto">
-              Recommendation rules are tied to specific diagnostic categories. Choose a category above to view or create rules for it.
+              {t('recommendationRules.selectCategoryManageDesc')}
             </p>
           </div>
         )}

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { useTranslation } from 'react-i18next';
 
 export interface ConditionRow {
   questionId: string;
@@ -20,6 +21,7 @@ interface Question {
 }
 
 export const ConditionBuilder: React.FC<ConditionBuilderProps> = ({ categoryId, conditions, onChange }) => {
+  const { t } = useTranslation();
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -71,18 +73,18 @@ export const ConditionBuilder: React.FC<ConditionBuilderProps> = ({ categoryId, 
     onChange(updated);
   };
 
-  if (loading) return <div className="text-sm text-slate-500 animate-pulse">Loading conditions...</div>;
-  if (questions.length === 0) return <div className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg border border-amber-200">This category has no diagnostic questions configured. You cannot build rules for it yet.</div>;
+  if (loading) return <div className="text-sm text-slate-500 animate-pulse">{t('recommendationRules.loadingConditions')}</div>;
+  if (questions.length === 0) return <div className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg border border-amber-200">{t('recommendationRules.noQuestionsConfigured')}</div>;
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <label className="block text-sm font-semibold text-slate-700">Match Conditions (AND logic)</label>
+        <label className="block text-sm font-semibold text-slate-700">{t('recommendationRules.matchConditionsLogic')}</label>
       </div>
       
       {conditions.length === 0 ? (
         <div className="p-4 border-2 border-dashed border-slate-200 rounded-xl text-center text-slate-500 text-sm">
-          No conditions defined. This rule will never match.
+          {t('recommendationRules.noConditionsDefined')}
         </div>
       ) : (
         <div className="space-y-3">
@@ -97,7 +99,7 @@ export const ConditionBuilder: React.FC<ConditionBuilderProps> = ({ categoryId, 
                     onChange={(e) => updateRow(index, 'questionId', e.target.value)}
                     className="w-full text-sm rounded-md border-slate-300 focus:border-teal-500 focus:ring-teal-500"
                   >
-                    <option value="">-- Select Question --</option>
+                    <option value="">{t('recommendationRules.selectQuestion')}</option>
                     {questions.map(q => (
                       <option key={q.id} value={q.id}>{q.question_text}</option>
                     ))}
@@ -105,14 +107,14 @@ export const ConditionBuilder: React.FC<ConditionBuilderProps> = ({ categoryId, 
                   
                   {selectedQ && (
                     <div className="flex items-center gap-2 mt-2">
-                      <span className="text-xs font-mono text-slate-400">equals = </span>
+                      <span className="text-xs font-mono text-slate-400">{t('recommendationRules.equals')} </span>
                       {selectedQ.question_type === 'single_choice' || selectedQ.question_type === 'radio' || selectedQ.question_type === 'select' ? (
                         <select
                           value={row.expectedValue}
                           onChange={(e) => updateRow(index, 'expectedValue', e.target.value)}
                           className="flex-1 text-sm rounded-md border-slate-300 focus:border-teal-500 focus:ring-teal-500"
                         >
-                          <option value="">-- Select expected answer --</option>
+                          <option value="">{t('recommendationRules.selectExpectedAnswer')}</option>
                           {selectedQ.ai_question_options?.map(opt => (
                             <option key={opt.id} value={opt.option_value}>{opt.option_value}</option>
                           ))}
@@ -122,7 +124,7 @@ export const ConditionBuilder: React.FC<ConditionBuilderProps> = ({ categoryId, 
                           type="text"
                           value={row.expectedValue}
                           onChange={(e) => updateRow(index, 'expectedValue', e.target.value)}
-                          placeholder="Type expected text match..."
+                          placeholder=""
                           className="flex-1 text-sm rounded-md border-slate-300 focus:border-teal-500 focus:ring-teal-500"
                         />
                       )}
@@ -134,7 +136,7 @@ export const ConditionBuilder: React.FC<ConditionBuilderProps> = ({ categoryId, 
                   type="button"
                   onClick={() => removeRow(index)}
                   className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition"
-                  title="Remove condition"
+                  title={t('recommendationRules.removeCondition')}
                 >
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -154,7 +156,7 @@ export const ConditionBuilder: React.FC<ConditionBuilderProps> = ({ categoryId, 
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
         </svg>
-        Add Condition
+        {t('recommendationRules.addCondition')}
       </button>
     </div>
   );

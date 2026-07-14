@@ -889,7 +889,8 @@ export const api = {
             customers(customer_name),
             products(product_name, product_code),
             priorities(priority_name),
-            creator:users!created_by(full_name)
+            creator:users!created_by(full_name),
+            diagnostic_category:ai_diagnostic_categories(category_name, category_name_ar)
           `);
         if (error) {
           console.log('[DEBUG api.getTickets] error:', error);
@@ -951,6 +952,7 @@ export const api = {
             assigned_to: ticket.assigned_to || null,
             tenant_id: ticket.customer_id || null,
             category: ticket.products?.product_code?.toLowerCase() || 'other',
+            diagnostic_category: ticket.diagnostic_category || null,
             created_at: ticket.created_at,
             updated_at: ticket.updated_at,
             justification_submitted_at: ticket.justification_submitted_at || null

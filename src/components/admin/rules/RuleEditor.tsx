@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { useTranslation } from 'react-i18next';
 import { ConditionBuilder, ConditionRow } from './ConditionBuilder';
 
 interface RuleEditorProps {
@@ -10,6 +11,7 @@ interface RuleEditorProps {
 }
 
 export const RuleEditor: React.FC<RuleEditorProps> = ({ categoryId, ruleToEdit, onClose, onSaved }) => {
+  const { t } = useTranslation();
   const [conditions, setConditions] = useState<ConditionRow[]>([]);
   const [recommendationText, setRecommendationText] = useState('');
   const [rootCauseText, setRootCauseText] = useState('');
@@ -42,7 +44,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ categoryId, ruleToEdit, 
     // Validate
     const validConditions = conditions.filter(c => c.questionId && c.expectedValue);
     if (validConditions.length === 0) {
-      setError("Please add at least one complete condition.");
+      setError(t('recommendationRules.pleaseAddAtLeastOneCondition'));
       return;
     }
     
@@ -90,7 +92,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ categoryId, ruleToEdit, 
         
         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-2xl">
           <h2 className="text-xl font-bold text-slate-800">
-            {ruleToEdit ? 'Edit Recommendation Rule' : 'Create New Rule'}
+            {ruleToEdit ? t('recommendationRules.editRule') : t('recommendationRules.createNewRule')}
           </h2>
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -116,33 +118,33 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ categoryId, ruleToEdit, 
             <hr className="border-slate-100" />
             
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-slate-700">Outcomes</h3>
+              <h3 className="text-sm font-semibold text-slate-700">{t('recommendationRules.outcomes')}</h3>
               
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Recommendation Text *</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">{t('recommendationRules.recommendationText')}</label>
                 <textarea
                   required
                   value={recommendationText}
                   onChange={e => setRecommendationText(e.target.value)}
-                  placeholder="e.g. Please restart the router..."
+                  placeholder=""
                   className="w-full rounded-lg border-slate-300 focus:border-teal-500 focus:ring-teal-500 min-h-[100px] text-sm"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Root Cause Text (Optional)</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">{t('recommendationRules.rootCauseTextOptional')}</label>
                 <input
                   type="text"
                   value={rootCauseText}
                   onChange={e => setRootCauseText(e.target.value)}
-                  placeholder="e.g. Hardware failure"
+                  placeholder=""
                   className="w-full rounded-lg border-slate-300 focus:border-teal-500 focus:ring-teal-500 text-sm"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Confidence Score (0-100)
+                  {t('recommendationRules.confidenceScore')}
                 </label>
                 <div className="flex items-center gap-4">
                   <input
@@ -157,7 +159,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ categoryId, ruleToEdit, 
                     {confidenceScore}%
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 mt-1">Used as a tiebreaker if multiple rules match.</p>
+                <p className="text-xs text-slate-500 mt-1">{t('recommendationRules.confidenceScoreDesc')}</p>
               </div>
             </div>
           </form>
@@ -169,7 +171,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ categoryId, ruleToEdit, 
             onClick={onClose}
             className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition"
           >
-            Cancel
+            {t('recommendationRules.cancel')}
           </button>
           <button
             form="rule-form"
@@ -177,7 +179,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ categoryId, ruleToEdit, 
             disabled={isSaving}
             className="px-6 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition disabled:opacity-50"
           >
-            {isSaving ? 'Saving...' : 'Save Rule'}
+            {isSaving ? t('recommendationRules.saving') : t('recommendationRules.saveRule')}
           </button>
         </div>
       </div>

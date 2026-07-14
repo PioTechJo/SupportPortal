@@ -1,5 +1,6 @@
 import React from 'react';
 import { ArrowLeft, Check, Package, ChevronRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface Step4DetailsProps {
   productName?: string;
@@ -17,6 +18,7 @@ interface Step4DetailsProps {
 export const Step4Details: React.FC<Step4DetailsProps> = ({
   productName, categoryName, title, setTitle, description, setDescription, onBack, onSubmit, isSubmitting, error
 }) => {
+  const { t } = useTranslation();
   const isFormValid = title.trim() && description.trim();
 
   return (
@@ -26,28 +28,28 @@ export const Step4Details: React.FC<Step4DetailsProps> = ({
           <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-[8px] mb-4">
             <Package size={14} className="text-slate-500" />
             <span className="text-[12px] font-medium text-slate-700">{productName || 'Product'}</span>
-            <ChevronRight size={14} className="text-slate-400" />
-            <span className="text-[12px] font-medium text-slate-700">{categoryName || 'Category'}</span>
+            <ChevronRight size={14} className="rtl:rotate-180 text-slate-400" />
+            <span className="text-[12px] font-medium text-slate-700">{categoryName || t('wizard.stepCategory')}</span>
           </div>
-          <h3 className="text-[18px] font-medium text-slate-800">Issue details</h3>
-          <p className="text-[13px] text-slate-500 mt-1">Please provide details to help us diagnose the issue.</p>
+          <h3 className="text-[18px] font-medium text-slate-800">{t("wizard.issueDetails")}</h3>
+          <p className="text-[13px] text-slate-500 mt-1">{t("wizard.pleaseProvide")}</p>
         </div>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Subject / Title *</label>
+            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">{t("wizard.subjectTitle")}</label>
             <input 
               type="text" 
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Brief summary of the issue"
+              placeholder={t('wizard.briefSummary')}
               className="w-full border border-slate-200 rounded-[8px] px-3 py-2 text-[14px] focus:ring-[#f97316] focus:border-[#f97316] outline-none transition-colors shadow-sm"
               required
             />
           </div>
           
           <div>
-            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">Detailed Description *</label>
+            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">{t("wizard.detailedDescription")}</label>
             <textarea 
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -63,7 +65,7 @@ export const Step4Details: React.FC<Step4DetailsProps> = ({
 
       <div className="pt-6 mt-6 border-t border-slate-200 flex justify-between items-center shrink-0">
         <button onClick={onBack} className="flex items-center gap-2 px-4 py-2 border-[0.5px] border-slate-200 rounded-[8px] text-[14px] font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-          <ArrowLeft size={16} /> Back
+          <ArrowLeft className="rtl:rotate-180" size={16} /> {t('wizard.back')}
         </button>
         <button 
           onClick={onSubmit} 

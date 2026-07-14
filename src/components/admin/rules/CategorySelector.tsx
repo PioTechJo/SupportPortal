@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { useTranslation } from 'react-i18next';
 
 interface Category {
   id: string;
@@ -16,6 +17,7 @@ interface CategorySelectorProps {
 }
 
 export const CategorySelector: React.FC<CategorySelectorProps> = ({ selectedCategoryId, onSelect }) => {
+  const { t } = useTranslation();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -50,13 +52,13 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({ selectedCate
 
   return (
     <div className="w-full max-w-md">
-      <label className="block text-sm font-semibold text-slate-700 mb-2">Select Target Category</label>
+      <label className="block text-sm font-semibold text-slate-700 mb-2">{t('recommendationRules.selectTargetCategory')}</label>
       <select
         value={selectedCategoryId}
         onChange={(e) => onSelect(e.target.value)}
         className="w-full rounded-lg border-slate-300 shadow-sm focus:border-teal-500 focus:ring-teal-500"
       >
-        <option value="">-- Choose a category --</option>
+        <option value="">{t('recommendationRules.chooseCategory')}</option>
         {categories.map((c) => (
           <option key={c.id} value={c.id}>
             {c.products?.product_name} &gt; {c.category_name}

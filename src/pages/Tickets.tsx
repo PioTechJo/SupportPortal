@@ -7,6 +7,7 @@ import { Ticket, Profile, CustomerProduct } from '../types';
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { 
   Search, 
   Plus, 
@@ -30,6 +31,7 @@ import { TicketCreationWizard } from '../components/ticket-wizard/TicketCreation
 
 export const Tickets: React.FC = () => {
   const queryClient = useQueryClient();
+  const { t, i18n } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -794,7 +796,13 @@ export const Tickets: React.FC = () => {
                       )}
                       <td className={`px-6 ${cellPadding}`}>
                         <div className="text-sm font-semibold text-slate-900 group-hover:text-[#3B82F6] transition-colors line-clamp-1">{ticket.title}</div>
-                        <div className="text-xs text-slate-500 mt-1 line-clamp-1">{ticket.product_name} • {ticket.category}</div>
+                        <div className="text-xs text-slate-500 mt-1 line-clamp-1">
+                          {ticket.product_name} • {
+                            (i18n.language === 'ar' && ticket.diagnostic_category?.category_name_ar)
+                              ? ticket.diagnostic_category.category_name_ar
+                              : (ticket.diagnostic_category?.category_name || ticket.category)
+                          }
+                        </div>
                       </td>
                       <td className={`px-6 ${cellPadding}`}>
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${getPriorityStyle(ticket.priority)}`}>

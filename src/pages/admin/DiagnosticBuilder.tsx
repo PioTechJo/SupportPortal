@@ -3,8 +3,10 @@ import { supabase } from '../../lib/supabase';
 import { CategoriesPanel } from '../../components/admin/diagnostics/CategoriesPanel';
 import { QuestionsPanel } from '../../components/admin/diagnostics/QuestionsPanel';
 import { OptionsPanel } from '../../components/admin/diagnostics/OptionsPanel';
+import { useTranslation } from 'react-i18next';
 
 export const DiagnosticBuilder: React.FC = () => {
+  const { t } = useTranslation();
   const [products, setProducts] = useState<any[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   
@@ -56,13 +58,13 @@ export const DiagnosticBuilder: React.FC = () => {
     <div className="space-y-6 h-[calc(100vh-8rem)] flex flex-col">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Diagnostic Builder</h2>
-          <p className="text-slate-500 mt-1">Manage the AI troubleshooting wizard structure.</p>
+          <h2 className="text-2xl font-bold text-slate-800">{t('diagnosticBuilder.title')}</h2>
+          <p className="text-slate-500 mt-1">{t('diagnosticBuilder.subtitle')}</p>
         </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 shrink-0 flex items-center gap-4">
-        <label className="font-semibold text-slate-700">Select Product:</label>
+        <label className="font-semibold text-slate-700">{t('diagnosticBuilder.selectProduct')}:</label>
         {loading ? (
           <div className="w-64 h-10 bg-slate-100 rounded animate-pulse"></div>
         ) : (
@@ -71,7 +73,7 @@ export const DiagnosticBuilder: React.FC = () => {
             onChange={handleProductChange}
             className="w-64 rounded-lg border-slate-300 focus:border-indigo-500 focus:ring-indigo-500"
           >
-            <option value="">-- Choose a Product --</option>
+            <option value="">{t('diagnosticBuilder.chooseProduct')}</option>
             {products.map(p => (
               <option key={p.id} value={p.id}>{p.product_name}</option>
             ))}
