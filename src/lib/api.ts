@@ -862,7 +862,7 @@ export const api = {
         let query = supabase
           .from('tickets')
           .select('*, ticket_statuses!inner(status_code)', { count: 'exact', head: true })
-          .not('ticket_statuses.status_code', 'in', '("RESOLVED","CLOSED")');
+          .not('ticket_statuses.status_code', 'in', '("RESOLVED","CLOSED","APPROVED")');
         
         if (tenantId) {
           query = query.eq('customer_id', tenantId);
@@ -1918,7 +1918,7 @@ export const api = {
           .from('tickets')
           .select('id, subject, description, created_at, ticket_statuses!inner(status_code)')
           .eq('product_id', productId)
-          .eq('ticket_statuses.status_code', 'CLOSED')
+          .in('ticket_statuses.status_code', ['CLOSED', 'APPROVED'])
           .order('created_at', { ascending: false })
           .limit(50);
           

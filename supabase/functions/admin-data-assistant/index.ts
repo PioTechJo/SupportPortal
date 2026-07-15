@@ -70,7 +70,7 @@ Question: "How many tickets did bank X create?"
 SQL: SELECT COUNT(*) FROM tickets t JOIN customers c ON t.customer_id = c.id WHERE c.customer_name ILIKE '%X%';
 
 Question: "How many tickets did engineer X resolve?"
-SQL: SELECT COUNT(*) FROM tickets t JOIN users u ON t.assigned_to = u.id WHERE u.full_name ILIKE '%X%' AND t.status_id = 'CLOSED';
+SQL: SELECT COUNT(*) FROM tickets t JOIN users u ON t.assigned_to = u.id JOIN ticket_statuses ts ON t.status_id = ts.id WHERE u.full_name ILIKE '%X%' AND ts.status_code IN ('CLOSED', 'APPROVED');
     `;
 
     const sqlGenerationResponse = await fetch("https://api.anthropic.com/v1/messages", {

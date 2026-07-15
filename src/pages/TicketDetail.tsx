@@ -94,6 +94,7 @@ export const TicketDetail: React.FC = () => {
   const [savingEscalation, setSavingEscalation] = useState(false);
 
   const [approving, setApproving] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [rejecting, setRejecting] = useState(false);
 
   const isAdmin = ["ADMIN", "ADMINISTRATOR", "CEO", "SUPPORT_MANAGER", "SYS_ADMIN"].includes(
@@ -1037,19 +1038,10 @@ export const TicketDetail: React.FC = () => {
     }
   };
 
-  const handleApproveTicket = async () => {
-    setApproving(true);
+  const handleCloseTicket = async () => {
+    setClosing(true);
     try {
-      // 1. Fetch APPROVED status
-      const { data: approvedStatus, error: approvedError } = await supabase
-        .from("ticket_statuses")
-        .select("id")
-        .eq("status_code", "APPROVED")
-        .single();
-
-      if (approvedError) throw approvedError;
-
-      // 2. Fetch CLOSED status
+      // Fetch CLOSED status
       const { data: closedStatus, error: closedError } = await supabase
         .from("ticket_statuses")
         .select("id")
@@ -1059,8 +1051,85 @@ export const TicketDetail: React.FC = () => {
       if (closedError) throw closedError;
 
       const oldStatusId = ticket.status_id;
+      const now = new Date().toISOString();
 
-      // --- STEP 1: Transition to APPROVED ---
+      const { error: closeUpdateError } = await supabase
+        .from("tickets")
+        .update({ 
+          status_id: closedStatus.id,
+          closed_at: now
+        })
+        .eq("id", id);
+
+      if (closeUpdateError) throw closeUpdateError;
+
+      await supabase.from("audit_log").insert({
+        table_name: "tickets",
+        record_id: id,
+        action_type: "TICKET_CLOSED",
+        old_value: { status_id: oldStatusId },
+        new_value: { status_id: closedStatus.id, closed_at: now },
+        changed_by: user?.id,
+      });
+
+      await supabase.from("ticket_status_history").insert({
+        ticket_id: id,
+        old_status_id: oldStatusId,
+        new_status_id: closedStatus.id,
+        changed_by: user?.id,
+        change_notes: "Ticket closed by support team, pending client approval",
+      });
+
+      // Send email to Customer
+      if (ticket.created_by) {
+        try {
+          const { data: customerEmail } = await supabase.rpc('get_user_email', { p_user_id: ticket.created_by });
+          if (customerEmail) {
+            const ticketNo = ticket.ticket_no || ticket.id.substring(0, 8).toUpperCase();
+            supabase.functions.invoke('send-email', {
+              body: {
+                to: customerEmail,
+                subject: `Your ticket ${ticketNo} has been closed`,
+                body: `Your ticket ${ticketNo} has been resolved and closed by our support team. Please review and approve the resolution at your convenience.\n\nSubject: ${ticket.subject}`,
+                ticket_id: id
+              }
+            }).catch(err => console.error("Error sending email to customer:", err));
+          }
+        } catch (e) { console.error(e); }
+      }
+
+      setTicket({
+        ...ticket,
+        status_id: closedStatus.id,
+        closed_at: now,
+        status: {
+          ...ticket.status,
+          status_code: "CLOSED",
+          status_name: "Closed",
+        },
+      });
+    } catch (err: any) {
+      console.error("Error closing ticket", err);
+      alert(`Failed to close ticket: ${err.message || "Unknown error"}`);
+    } finally {
+      setClosing(false);
+    }
+  };
+
+  const handleApproveTicket = async () => {
+    setApproving(true);
+    try {
+      // Fetch APPROVED status
+      const { data: approvedStatus, error: approvedError } = await supabase
+        .from("ticket_statuses")
+        .select("id")
+        .eq("status_code", "APPROVED")
+        .single();
+
+      if (approvedError) throw approvedError;
+
+      const oldStatusId = ticket.status_id;
+
       const { error: approveUpdateError } = await supabase
         .from("tickets")
         .update({ status_id: approvedStatus.id })
@@ -1082,119 +1151,34 @@ export const TicketDetail: React.FC = () => {
         old_status_id: oldStatusId,
         new_status_id: approvedStatus.id,
         changed_by: user?.id,
-        change_notes: "Ticket resolution approved",
+        change_notes: "Ticket resolution approved by client",
       });
 
-      // --- STEP 2: Transition from APPROVED to CLOSED ---
-      const now = new Date().toISOString();
-      const { error: closeUpdateError } = await supabase
-        .from("tickets")
-        .update({ 
-          status_id: closedStatus.id,
-          closed_at: now
-        })
-        .eq("id", id);
-
-      if (closeUpdateError) throw closeUpdateError;
-
-      await supabase.from("audit_log").insert({
-        table_name: "tickets",
-        record_id: id,
-        action_type: "TICKET_CLOSED",
-        old_value: { status_id: approvedStatus.id },
-        new_value: { status_id: closedStatus.id, closed_at: now },
-        changed_by: user?.id,
-      });
-
-      await supabase.from("ticket_status_history").insert({
-        ticket_id: id,
-        old_status_id: approvedStatus.id,
-        new_status_id: closedStatus.id,
-        changed_by: user?.id,
-        change_notes: "Ticket automatically closed after approval",
-      });
-
-      // Send notifications to assigned engineer and ticket creator
-      try {
-        const notifications = [];
-        const ticketNo = ticket.ticket_no || ticket.id.substring(0, 8).toUpperCase();
-        
-        if (ticket.assigned_to) {
-          notifications.push({
-            profile_id: ticket.assigned_to,
-            content: `Your resolution for ticket ${ticketNo} has been approved`,
-            type: "resolution_approved",
-            is_read: false,
-            link_ticket_id: id,
-          });
-        }
-        
-        if (ticket.created_by) {
-          notifications.push({
-            profile_id: ticket.created_by,
-            content: `Your ticket has been closed`,
-            type: "ticket_closed",
-            is_read: false,
-            link_ticket_id: id,
-          });
-        }
-
-        if (notifications.length > 0) {
-          const { error: notifError } = await supabase.from("notifications").insert(notifications);
-          if (notifError) {
-            console.error("Failed to insert notifications for approval/close:", notifError);
+      // Send email to Engineer
+      if (ticket.assigned_to) {
+        try {
+          const { data: engineerEmail } = await supabase.rpc('get_user_email', { p_user_id: ticket.assigned_to });
+          if (engineerEmail) {
+            const ticketNo = ticket.ticket_no || ticket.id.substring(0, 8).toUpperCase();
+            supabase.functions.invoke('send-email', {
+              body: {
+                to: engineerEmail,
+                subject: `Your resolution for ticket ${ticketNo} has been approved`,
+                body: `Your resolution for ticket ${ticketNo} has been approved.\n\nSubject: ${ticket.subject}`,
+                ticket_id: id
+              }
+            }).catch(err => console.error("Error sending email to engineer:", err));
           }
-        }
-
-        // Send email to Engineer
-        if (ticket.assigned_to) {
-          (async () => {
-            try {
-              const { data: engineerEmail } = await supabase.rpc('get_user_email', { p_user_id: ticket.assigned_to });
-              if (engineerEmail) {
-                supabase.functions.invoke('send-email', {
-                  body: {
-                    to: engineerEmail,
-                    subject: `Your resolution for ticket ${ticketNo} has been approved`,
-                    body: `Your resolution for ticket ${ticketNo} has been approved.\n\nSubject: ${ticket.subject}`,
-                    ticket_id: id
-                  }
-                }).catch(err => console.error("Error sending email to engineer:", err));
-              }
-            } catch (e) { console.error(e); }
-          })();
-        }
-
-        // Send email to Customer
-        if (ticket.created_by) {
-          (async () => {
-            try {
-              const { data: customerEmail } = await supabase.rpc('get_user_email', { p_user_id: ticket.created_by });
-              if (customerEmail) {
-                supabase.functions.invoke('send-email', {
-                  body: {
-                    to: customerEmail,
-                    subject: `Your ticket ${ticketNo} has been closed`,
-                    body: `Your ticket ${ticketNo} has been closed. Thank you for using Pio-Tech Support Portal.\n\nSubject: ${ticket.subject}`,
-                    ticket_id: id
-                  }
-                }).catch(err => console.error("Error sending email to customer:", err));
-              }
-            } catch (e) { console.error(e); }
-          })();
-        }
-      } catch (notifErr) {
-        console.error("Unexpected error while sending approval notifications:", notifErr);
+        } catch (e) { console.error(e); }
       }
 
       setTicket({
         ...ticket,
-        status_id: closedStatus.id,
-        closed_at: now,
+        status_id: approvedStatus.id,
         status: {
           ...ticket.status,
-          status_code: "CLOSED",
-          status_name: "Closed",
+          status_code: "APPROVED",
+          status_name: "Approved",
         },
       });
     } catch (err: any) {
@@ -1361,18 +1345,34 @@ export const TicketDetail: React.FC = () => {
                   {t("ticketDetail.reject")}
                 </button>
                 <button
-                  onClick={handleApproveTicket}
-                  disabled={approving}
+                  onClick={handleCloseTicket}
+                  disabled={closing}
                   className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
                 >
-                  {approving ? (
+                  {closing ? (
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
                   ) : (
                     <CheckCircle2 size={16} />
                   )}
-                  {t("ticketDetail.approve")}
+                  {t("ticketDetail.close")}
                 </button>
               </>
+            )}
+
+          {user && ["BANK_USER", "BANK_MANAGER", "BANK_ADMIN"].includes((user.role_code || "").toUpperCase()) &&
+            (ticket.status?.status_code || ticket.status_code || "").toUpperCase() === "CLOSED" && (
+              <button
+                onClick={handleApproveTicket}
+                disabled={approving}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
+              >
+                {approving ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                ) : (
+                  <CheckCircle2 size={16} />
+                )}
+                {t("ticketDetail.approve")}
+              </button>
             )}
 
           {(isAdmin || ticket?.assigned_to === user?.id) &&
@@ -2095,9 +2095,9 @@ export const TicketDetail: React.FC = () => {
 
               <div className="relative">
                 <div
-                  className={`absolute -start-6 mt-1 w-5 h-5 rounded-full border-[3px] border-white shadow-sm z-10 flex items-center justify-center ${["CLOSED", "APPROVED"].includes((ticket.status?.status_code || ticket.status_code || "").toUpperCase()) ? "bg-[#3B82F6]" : "bg-white border-slate-300 outline outline-1 outline-dashed outline-slate-300"}`}
+                  className={`absolute -start-6 mt-1 w-5 h-5 rounded-full border-[3px] border-white shadow-sm z-10 flex items-center justify-center ${["APPROVED"].includes((ticket.status?.status_code || ticket.status_code || "").toUpperCase()) ? "bg-[#3B82F6]" : "bg-white border-slate-300 outline outline-1 outline-dashed outline-slate-300"}`}
                 >
-                  {["CLOSED", "APPROVED"].includes(
+                  {["APPROVED"].includes(
                     (
                       ticket.status?.status_code ||
                       ticket.status_code ||
@@ -2108,14 +2108,14 @@ export const TicketDetail: React.FC = () => {
                   )}
                 </div>
                 <div
-                  className={`text-sm font-semibold ${["CLOSED", "APPROVED"].includes((ticket.status?.status_code || ticket.status_code || "").toUpperCase()) ? "text-slate-900" : "text-slate-500"}`}
-                >{t("ticketDetail.closed")}</div>
+                  className={`text-sm font-semibold ${["APPROVED"].includes((ticket.status?.status_code || ticket.status_code || "").toUpperCase()) ? "text-slate-900" : "text-slate-500"}`}
+                >{t("ticketDetail.approved", "Approved")}</div>
                 <div className="text-xs text-slate-500 mt-1">
                   {(
                     ticket.status?.status_code ||
                     ticket.status_code ||
                     ""
-                  ).toUpperCase() === "CLOSED"
+                  ).toUpperCase() === "APPROVED"
                     ? t("ticketDetail.ticketCompleted")
                     : t("ticketDetail.awaitingFinalApproval")}
                 </div>

@@ -17,9 +17,9 @@ export const Login: React.FC = () => {
   const toggleLanguage = async () => {
     const currentLang = i18n.language?.startsWith('ar') ? 'ar' : 'en';
     const newLang = currentLang === 'ar' ? 'en' : 'ar';
-    
+
     await i18n.changeLanguage(newLang);
-    
+
     localStorage.setItem('appLanguage', newLang);
     document.documentElement.dir = newLang === 'ar' ? 'rtl' : 'ltr';
     document.documentElement.lang = newLang;
@@ -35,7 +35,7 @@ export const Login: React.FC = () => {
     setLoading(true);
     try {
       const loggedUser = await signIn(email, password);
-      
+
       // Redirect based on role:
       const roleUp = loggedUser.role_code?.toUpperCase() || '';
       if (['ADMIN', 'ADMINISTRATOR', 'SYS_ADMIN', 'CEO', 'SUPPORT_MANAGER'].includes(roleUp)) {
@@ -80,12 +80,12 @@ export const Login: React.FC = () => {
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         {/* Container White Card with Dark Navy Header */}
         <div className="bg-white shadow-xl sm:rounded-2xl overflow-hidden border border-slate-200">
-          
+
           {/* Header with PIO-TECH logo */}
           <div className="bg-white px-8 py-7 border-b border-slate-100 flex justify-center items-center">
-            <img 
-              src={logoImg} 
-              alt="Pio-Tech Logo" 
+            <img
+              src={logoImg}
+              alt="Pio-Tech Logo"
               className="w-[180px] h-auto object-contain"
             />
           </div>

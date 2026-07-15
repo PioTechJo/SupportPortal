@@ -25,6 +25,7 @@ import {
   ChevronDown,
   Menu,
   Clock,
+  History,
   Mail
 } from 'lucide-react';
 import logoWhite from '../assets/pio-tech-logo-white.png';
@@ -202,6 +203,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     { name: 'askYourData', path: '/admin/data-assistant', icon: Database },
     { name: 'reportBuilder', path: '/admin/reports', icon: TableProperties },
     { name: 'agingReport', path: '/admin/aging-report', icon: Clock },
+    { name: 'ticketLifecycle', path: '/admin/ticket-lifecycle', icon: History },
   ];
 
   const adminConfigItems = [

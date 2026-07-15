@@ -14,6 +14,7 @@ import { TicketDetail } from './pages/TicketDetail';
 import { Organizations } from './pages/Organizations';
 import { ReportBuilder } from './pages/ReportBuilder';
 import { AgingReport } from './pages/admin/AgingReport';
+import { TicketLifecycle } from './pages/admin/TicketLifecycle';
 import ResolutionApprovals from './pages/ResolutionApprovals';
 import Users from './pages/Users';
 import { Unauthorized } from './pages/Unauthorized';
@@ -187,8 +188,16 @@ export default function App() {
               <Route 
                 path="/admin/aging-report" 
                 element={
-                  <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER']}>
+                  <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER', 'SYS_ADMIN']}>
                     <AgingReport />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/admin/ticket-lifecycle" 
+                element={
+                  <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER', 'SYS_ADMIN']}>
+                    <TicketLifecycle />
                   </ProtectedRoute>
                 } 
               />

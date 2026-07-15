@@ -200,7 +200,7 @@ export const Overview: React.FC = () => {
       if (code === 'NEW') newTickets++;
       else if (code === 'REOPENED') reopenedTickets++;
       else if (code === 'INVESTIGATION') inProgressTickets++;
-      else if (code === 'CLOSED') closedTickets++;
+      else if (code === 'CLOSED' || code === 'APPROVED') closedTickets++;
     });
 
     return { newTickets, reopenedTickets, inProgressTickets, closedTickets };
@@ -288,7 +288,7 @@ export const Overview: React.FC = () => {
 
 
   const agentPerformance = useMemo(() => {
-    const resolvedCodes = ['RESOLVED', 'CLOSED'];
+    const resolvedCodes = ['RESOLVED', 'CLOSED', 'APPROVED'];
     const performance: Record<string, { id: string; name: string; assigned: number; resolved: number; totalHours: number }> = {};
     analyticsTickets.forEach(t => {
       const code = (t.status_code || '').toUpperCase();

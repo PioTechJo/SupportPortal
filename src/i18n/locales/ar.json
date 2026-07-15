@@ -98,7 +98,8 @@
     "home": "الرئيسية",
     "notifications": "الإشعارات",
     "markAllRead": "تحديد الكل كمقروء",
-    "noNotifications": "لا توجد إشعارات بعد"
+    "noNotifications": "لا توجد إشعارات بعد",
+    "ticketLifecycle": "المسار الزمني للتذكرة"
   },
   "roles": {
     "Guest": "زائر",
@@ -447,5 +448,30 @@
     "removeCondition": "إزالة الشرط",
     "selectTargetCategory": "تحديد الفئة المستهدفة",
     "chooseCategory": "-- اختر فئة --"
+  },
+  "ticketLifecycle": {
+    "title": "المسار الزمني للتذكرة",
+    "searchPlaceholder": "????? ???? ???????? ??????? ?? ???????...",
+    "totalDuration": "المدة الإجمالية",
+    "currentStatus": "الحالة الحالية",
+    "noTicketSelected": "حدد تذكرة لعرض مسارها الزمني.",
+    "ticketNotFound": "التذكرة غير موجودة أو لا يوجد سجل تاريخي لها.",
+    "loading": "جاري تحميل السجل...",
+    "events": {
+      "created": "تم الإنشاء",
+      "assigned": "تم التعيين إلى",
+      "status_changed": "تغيرت الحالة إلى",
+      "escalated": "تم التصعيد إلى",
+      "returned": "تم إرجاع التصعيد",
+      "resolved": "تم الحل",
+      "closed": "تم الإغلاق",
+      "approved": "تمت الموافقة"
+    },
+    "by": "بواسطة",
+    "justNow": "الآن",
+    "selectTicket": "???? ?????",
+    "colTicketNo": "??? ???????",
+    "colCustomer": "??????",
+    "colSubject": "???????"
   }
 }

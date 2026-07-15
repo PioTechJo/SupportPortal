@@ -29,7 +29,12 @@ import {
 } from 'lucide-react';
 import { TicketCreationWizard } from '../components/ticket-wizard/TicketCreationWizard';
 
-export const Tickets: React.FC = () => {
+interface TicketsProps {
+  isEmbedded?: boolean;
+  onTicketSelect?: (ticketId: string) => void;
+}
+
+export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) => {
   const queryClient = useQueryClient();
   const { t, i18n } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -696,13 +701,15 @@ export const Tickets: React.FC = () => {
               </button>
             </div>
             
-            <button 
-              onClick={handleOpenCreateModal}
-              className="flex items-center gap-2 px-4 py-2 bg-[#3B82F6] hover:bg-[#2563eb] text-white rounded-lg text-sm font-medium transition-colors ml-2 shadow-sm"
-            >
-              <Plus size={16} />
-              Create ticket
-            </button>
+            {!isEmbedded && (
+              <button 
+                onClick={handleOpenCreateModal}
+                className="flex items-center gap-2 px-4 py-2 bg-[#3B82F6] hover:bg-[#2563eb] text-white rounded-lg text-sm font-medium transition-colors ml-2 shadow-sm"
+              >
+                <Plus size={16} />
+                Create ticket
+              </button>
+            )}
           </div>
         </div>
 
@@ -774,7 +781,13 @@ export const Tickets: React.FC = () => {
                   sortedTickets.map(ticket => (
                     <tr 
                       key={ticket.id} 
-                      onDoubleClick={() => navigate(`/tickets/${ticket.id}`)}
+                      onDoubleClick={() => {
+                        if (onTicketSelect) {
+                          onTicketSelect(ticket.id);
+                        } else {
+                          navigate(`/tickets/${ticket.id}`);
+                        }
+                      }}
                       className="hover:bg-slate-50/50 transition-colors cursor-pointer group"
                       title="Double-click to open ticket"
                     >

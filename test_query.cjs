@@ -1,15 +1,16 @@
 const { createClient } = require('@supabase/supabase-js');
-require('dotenv').config();
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = "https://ybacrvdkbgljdykdogpz.supabase.co";
+const supabaseKey = "sb_publishable_iGtlYcPTXQlu6dSpI-tKbQ_4naHYgD_";
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function check() {
   const { data, error } = await supabase
     .from('audit_log')
     .select('*')
-    .limit(1);
-  console.log("Data:", data);
-  console.log("Error:", error);
+    .in('action_type', ['TICKET_CLOSED', 'RESOLUTION_APPROVED', 'RESOLUTION_SUBMITTED', 'STATUS_CHANGE'])
+    .order('created_at', { ascending: false })
+    .limit(10);
+  console.log("Recent Audit Logs:", JSON.stringify(data, null, 2));
+  if (error) console.log("Error:", error);
 }
 check();

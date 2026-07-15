@@ -98,7 +98,8 @@
     "home": "Home",
     "notifications": "Notifications",
     "markAllRead": "Mark all as read",
-    "noNotifications": "No notifications yet"
+    "noNotifications": "No notifications yet",
+    "ticketLifecycle": "Ticket Lifecycle Timeline"
   },
   "roles": {
     "Guest": "Guest",
@@ -447,5 +448,30 @@
     "removeCondition": "Remove condition",
     "selectTargetCategory": "Select Target Category",
     "chooseCategory": "-- Choose a category --"
+  },
+  "ticketLifecycle": {
+    "title": "Ticket Lifecycle Timeline",
+    "searchPlaceholder": "Search by ticket no, customer, or subject...",
+    "totalDuration": "Total Duration",
+    "currentStatus": "Current Status",
+    "noTicketSelected": "Select a ticket to view its lifecycle timeline.",
+    "ticketNotFound": "Ticket not found or no history available.",
+    "loading": "Loading history...",
+    "events": {
+      "created": "Created",
+      "assigned": "Assigned to",
+      "status_changed": "Status changed to",
+      "escalated": "Escalated to",
+      "returned": "Escalation Returned",
+      "resolved": "Resolved",
+      "closed": "Closed",
+      "approved": "Approved"
+    },
+    "by": "by",
+    "justNow": "Just now",
+    "selectTicket": "Select a Ticket",
+    "colTicketNo": "Ticket No.",
+    "colCustomer": "Customer",
+    "colSubject": "Subject"
   }
 }

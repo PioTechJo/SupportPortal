@@ -173,7 +173,7 @@ export const AdminAnalytics: React.FC = () => {
   // Compute stats metrics
   const metrics = useMemo(() => {
     const openCodes = ['NEW', 'ASSIGNED', 'INVESTIGATION', 'PENDING_CUSTOMER'];
-    const resolvedCodes = ['RESOLVED', 'CLOSED'];
+    const resolvedCodes = ['RESOLVED', 'CLOSED', 'APPROVED'];
 
     let totalOpen = 0;
     let resolvedCount = 0;
@@ -306,7 +306,7 @@ export const AdminAnalytics: React.FC = () => {
 
   // 3. Chart Data: Avg Resolution Time by Product (Bar Chart)
   const productAvgResolutionData = useMemo(() => {
-    const resolvedCodes = ['RESOLVED', 'CLOSED'];
+    const resolvedCodes = ['RESOLVED', 'CLOSED', 'APPROVED'];
     const sums: Record<string, { totalHours: number; count: number }> = {};
 
     analyticsTickets.forEach(t => {
@@ -336,7 +336,7 @@ export const AdminAnalytics: React.FC = () => {
 
   // 4. Agent Performance Table Calculation
   const agentPerformance = useMemo(() => {
-    const resolvedCodes = ['RESOLVED', 'CLOSED'];
+    const resolvedCodes = ['RESOLVED', 'CLOSED', 'APPROVED'];
     const performance: Record<string, { name: string; assigned: number; resolved: number; totalHours: number }> = {};
 
     analyticsTickets.forEach(t => {
