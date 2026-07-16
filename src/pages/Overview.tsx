@@ -252,7 +252,7 @@ export const Overview: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 font-sans p-6">
+    <div className="space-y-6 font-sans p-3 md:p-6">
       {/* Welcome Banner */}
       <div className="bg-white p-6 md:p-8 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>

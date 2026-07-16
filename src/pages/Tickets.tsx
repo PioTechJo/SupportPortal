@@ -464,7 +464,7 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
   };
 
   return (
-    <div className="flex flex-col h-full p-6 max-w-[1600px] mx-auto">
+    <div className="flex flex-col h-full p-3 md:p-6 max-w-[1600px] mx-auto">
 
       {/* Horizontal Ticket Views Bar */}
       <div className="flex items-center flex-wrap gap-2 pb-4 mb-4 border-b border-slate-200">

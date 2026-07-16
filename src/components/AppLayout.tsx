@@ -91,8 +91,13 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [isAdminConfigExpanded, setIsAdminConfigExpanded] = useState(false);
   const [isAdminReportingExpanded, setIsAdminReportingExpanded] = useState(false);
-  
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
   const { t, i18n } = useTranslation();
+
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     const currentLang = i18n.language || localStorage.getItem('appLanguage') || 'en';
@@ -217,12 +222,24 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex font-sans">
-      
-      <aside 
-        className="sticky top-0 h-screen overflow-y-auto bg-[#1a1f2e] flex flex-col py-4 border-r border-[#1a1f2e] shrink-0 z-40 custom-scrollbar"
-        style={{ 
+
+      {/* Mobile drawer backdrop */}
+      {isMobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-30 md:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
+      <aside
+        className={`
+          fixed md:sticky top-0 h-screen overflow-y-auto bg-[#1a1f2e] flex flex-col py-4 border-r border-[#1a1f2e] shrink-0 z-40 custom-scrollbar
+          transition-transform duration-200 md:translate-x-0
+          ${isMobileMenuOpen ? 'translate-x-0' : 'ltr:-translate-x-full rtl:translate-x-full'}
+        `}
+        style={{
           width: isExpanded ? '220px' : '52px',
-          transition: 'width 200ms ease-in-out'
+          transition: 'width 200ms ease-in-out, transform 200ms ease-in-out'
         }}
       >
         
@@ -396,7 +413,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             title={isExpanded ? t('layout.collapseSidebar') : t('layout.expandSidebar')}
-            className={`flex items-center justify-center rounded-lg text-[#8892a4] hover:text-[#cdd3e0] hover:bg-slate-800/50 transition-colors overflow-hidden mt-2
+            className={`hidden md:flex items-center justify-center rounded-lg text-[#8892a4] hover:text-[#cdd3e0] hover:bg-slate-800/50 transition-colors overflow-hidden mt-2
               w-10 h-10 shrink-0 ${isExpanded ? 'ml-2' : ''}
             `}
           >
@@ -410,14 +427,21 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         
         {/* Top bar */}
         {!location.pathname.match(/^\/tickets\/[a-zA-Z0-9-]+/) && (
-        <header className="h-[60px] bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 z-30">
-          <div className="flex items-center text-sm">
-            <span className="text-slate-400 font-medium">{t('layout.home')}</span>
-            <span className="mx-2 text-slate-300 rtl:rotate-180">›</span>
-            <span className="text-slate-800 font-medium capitalize">{getBreadcrumbTitle(location.pathname, i18n.t)}</span>
+        <header className="h-[60px] bg-white border-b border-slate-200 flex items-center justify-between px-3 md:px-6 shrink-0 z-30">
+          <div className="flex items-center text-sm min-w-0">
+            <button
+              onClick={() => { setIsExpanded(true); setIsMobileMenuOpen(true); }}
+              className="md:hidden mr-2 p-2 -ml-1 rounded-lg text-slate-500 hover:bg-slate-100 shrink-0"
+              title={t('layout.expandSidebar')}
+            >
+              <Menu size={20} />
+            </button>
+            <span className="text-slate-400 font-medium hidden sm:inline">{t('layout.home')}</span>
+            <span className="mx-2 text-slate-300 rtl:rotate-180 hidden sm:inline">›</span>
+            <span className="text-slate-800 font-medium capitalize truncate">{getBreadcrumbTitle(location.pathname, i18n.t)}</span>
           </div>
 
-          <div className="flex items-center gap-5">
+          <div className="flex items-center gap-2 md:gap-5">
             <button 
               onClick={toggleLanguage}
               className="text-sm font-semibold text-slate-600 hover:text-slate-900 px-3 py-1.5 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
@@ -510,7 +534,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         )}
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto bg-slate-50 px-6">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 px-3 md:px-6">
           {children}
         </main>
 
