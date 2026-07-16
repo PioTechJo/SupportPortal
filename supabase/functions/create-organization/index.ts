@@ -37,17 +37,20 @@ Deno.serve(async (req) => {
     })
 
     // Parse the payload
-    const { name, domain, createdBy } = await req.json()
+    const { name, domain, country, createdBy } = await req.json()
 
     if (!name || !domain) {
       throw new Error('Missing required fields: name, domain')
     }
 
-    // 1. Insert the new organization into public.customers using Service Role (bypassing RLS)
-    const insertPayload = {
+    const insertPayload: any = {
       customer_code: domain.replace('.com', '').toUpperCase(),
       customer_name: name,
       status: 'ACTIVE'
+    }
+    
+    if (country) {
+      insertPayload.country = country
     }
 
     const { data: customerData, error: customerError } = await supabaseAdmin

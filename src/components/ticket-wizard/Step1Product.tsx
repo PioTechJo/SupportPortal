@@ -27,7 +27,7 @@ export const Step1Product: React.FC<Step1ProductProps> = ({ organizationId, sele
       const { data, error } = await supabase
         .from('organization_products')
         .select(`
-          product_id,
+          product_code,
           products!inner (
             id,
             product_name,

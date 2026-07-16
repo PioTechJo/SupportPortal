@@ -1,0 +1,1 @@
+SELECT COUNT(*) as count FROM public.products WHERE product_code = 'LEGACY'

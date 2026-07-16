@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Tenant, Profile } from '../../types';
 import { 
   Building2, Users, Ticket, BookOpen, Clock, 
-  ArrowLeft, Edit2, Plus, Search, MoreVertical, Shield, Package, Ban
+  ArrowLeft, Edit2, Plus, Search, MoreVertical, Shield, Package, Ban, MapPin
 } from 'lucide-react';
 import { OrganizationUsersTab } from './OrganizationUsersTab';
 import { AddOrganizationUserModal } from './AddOrganizationUserModal';
@@ -113,6 +113,15 @@ export const OrganizationDetails: React.FC<OrganizationDetailsProps> = ({
               </h1>
               <div className="flex items-center gap-3 mt-1.5 text-sm font-medium text-slate-500">
                 <span>{organization.domain}</span>
+                {organization.country && (
+                  <>
+                    <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                    <span className="flex items-center gap-1">
+                      <MapPin size={14} className="text-slate-400" />
+                      {organization.country}
+                    </span>
+                  </>
+                )}
                 <span className="w-1 h-1 rounded-full bg-slate-300"></span>
                 <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded ${
                   organization.support_tier === 'enterprise' ? 'bg-purple-100 text-purple-700' :

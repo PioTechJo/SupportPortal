@@ -50,7 +50,7 @@ export const OrganizationOverviewTab: React.FC<OrganizationOverviewTabProps> = (
         const [orgProductsData, contractsData] = await Promise.all([
           supabase
             .from('organization_products')
-            .select('product_id')
+            .select('product_code')
             .eq('organization_id', organization.id)
             .eq('is_active', true),
           supabase

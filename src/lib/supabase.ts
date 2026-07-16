@@ -18,6 +18,8 @@ export const supabaseAnon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: false,
     autoRefreshToken: false,
-    detectSessionInUrl: false
+    detectSessionInUrl: false,
+    storageKey: 'sb-anon-lookup-client', // unique key — prevents sharing auth token with main client
   }
 });
+

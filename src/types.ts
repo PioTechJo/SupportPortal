@@ -36,6 +36,7 @@ export interface Tenant {
   id: string;
   name: string;
   domain: string;
+  country?: string;
   logo_url?: string;
   primary_color?: string;
   support_tier: 'standard' | 'premium' | 'enterprise';
@@ -70,6 +71,7 @@ export interface Ticket {
   // Expressive joins:
   creator_name?: string;
   assigned_to_name?: string;
+  legacy_assigned_to?: string | null;
   customer_name?: string;
   tenant_name?: string;
   status_code?: string;

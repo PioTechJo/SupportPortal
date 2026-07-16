@@ -47,9 +47,9 @@ export const OrganizationProductsTab: React.FC<OrganizationProductsTabProps> = (
       // Initialize selected set
       const initialSelected = new Set<string>();
       licensed.filter(lp => lp.is_active).forEach(lp => {
-        // Use the native product_id directly from the database
-        if (lp.product_id) {
-          initialSelected.add(lp.product_id);
+        // Use the native product_code directly from the database
+        if (lp.product_code) {
+          initialSelected.add(lp.product_code);
         }
       });
       setSelectedProductCodes(initialSelected);
@@ -167,13 +167,13 @@ export const OrganizationProductsTab: React.FC<OrganizationProductsTabProps> = (
           </thead>
           <tbody className="divide-y divide-slate-100">
             {filteredProducts.map((product) => {
-              const isSelected = selectedProductCodes.has(product.id);
+              const isSelected = selectedProductCodes.has(product.product_code || '');
               
               return (
                 <tr 
                   key={product.id} 
                   className={`hover:bg-slate-50 transition-colors cursor-pointer ${isSelected ? 'bg-teal-50/10' : ''}`}
-                  onClick={() => handleToggleProduct(product.id)}
+                  onClick={() => handleToggleProduct(product.product_code || '')}
                 >
                   <td className="px-6 py-4 w-16">
                     <div className="flex items-center">

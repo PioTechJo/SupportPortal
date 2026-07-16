@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { X, Building2 } from 'lucide-react';
+import { COUNTRIES } from '../../lib/countries';
 
 interface NewOrganizationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (data: {
-    name: string;
     domain: string;
+    country: string;
     logo_url: string;
     primary_color: string;
     support_tier: 'standard' | 'premium' | 'enterprise';
@@ -21,6 +22,7 @@ export const NewOrganizationModal: React.FC<NewOrganizationModalProps> = ({
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [domain, setDomain] = useState('');
+  const [country, setCountry] = useState('');
   const [tier, setTier] = useState<'standard' | 'premium' | 'enterprise'>('standard');
   const [color, setColor] = useState('#0f766e');
   const [logo, setLogo] = useState('🏢');
@@ -44,6 +46,7 @@ export const NewOrganizationModal: React.FC<NewOrganizationModalProps> = ({
       await onSubmit({
         name,
         domain,
+        country,
         logo_url: logo,
         primary_color: color,
         support_tier: tier
@@ -52,6 +55,7 @@ export const NewOrganizationModal: React.FC<NewOrganizationModalProps> = ({
       setName('');
       setCode('');
       setDomain('');
+      setCountry('');
       setTier('standard');
       setColor('#0f766e');
       setLogo('🏢');
@@ -133,6 +137,25 @@ export const NewOrganizationModal: React.FC<NewOrganizationModalProps> = ({
                   required
                 />
               </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-slate-700">
+                  Country
+                </label>
+                <select
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-colors"
+                  required
+                >
+                  <option value="" disabled>Select Country</option>
+                  {COUNTRIES.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-6">
               <div className="space-y-2">
                 <label className="block text-sm font-semibold text-slate-700">
                   Support Tier

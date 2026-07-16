@@ -82,6 +82,31 @@ export function useTickets() {
   };
 }
 
+export function useTicketsPaginated(page: number = 1, limit: number = 50, customerId?: string | null, search?: string, engineerId?: string | null) {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ['tickets-paginated', user?.id, user?.tenant_id, user?.customer_id, user?.role_code, page, limit, customerId, search, engineerId],
+    queryFn: async () => {
+      if (!user) return { data: [], count: 0 };
+      const res = await api.getTicketsPaginated(page, limit, customerId, search, engineerId);
+
+      const roleUp = user.role_code?.toUpperCase() || '';
+      const isTenantUser = !['ADMIN', 'ADMINISTRATOR', 'SYS_ADMIN', 'CEO', 'SUPPORT_MANAGER', 'AGENT', 'SUPPORT_ENGINEER', 'SUPPORT_OFFICER', 'TEAM_LEAD', 'TEAM_MEMBER'].includes(roleUp);
+      if (isTenantUser) {
+        const userTenantId = user.tenant_id || user.customer_id;
+        if (!userTenantId) return { data: [], count: 0 };
+        
+        return {
+          data: res.data.filter(t => (t.tenant_id || (t as any).customer_id) === userTenantId),
+          count: res.count
+        };
+      }
+      return res;
+    },
+    enabled: !!user,
+  });
+}
+
 export function useTicketDetails(ticketId: string) {
   const queryClient = useQueryClient();
 

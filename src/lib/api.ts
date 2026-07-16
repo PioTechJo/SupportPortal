@@ -766,6 +766,7 @@ export const api = {
           id: row.id,
           name: row.customer_name,
           domain: (row.customer_code || 'customer').toLowerCase() + '.com',
+          country: row.country,
           logo_url: '🏢',
           primary_color: '#0f766e',
           support_tier: 'enterprise',
@@ -777,6 +778,44 @@ export const api = {
     );
   },
 
+  async getTenantsPaginated(page: number = 1, limit: number = 50, countryFilter?: string): Promise<{ data: Tenant[], count: number }> {
+    return safeExecute<{ data: Tenant[], count: number }>(
+      async () => {
+        const from = (page - 1) * limit;
+        const to = from + limit - 1;
+        
+        let query = supabaseAnon
+          .from('customers')
+          .select('*', { count: 'exact' });
+          
+        if (countryFilter && countryFilter.toLowerCase() !== 'all') {
+          query = query.eq('country', countryFilter);
+        }
+        
+        const { data, error, count } = await query
+          .range(from, to)
+          .order('customer_name', { ascending: true });
+          
+        if (error) throw error;
+        
+        const mappedData = (data || []).map((row: any) => ({
+          id: row.id,
+          name: row.customer_name,
+          domain: (row.customer_code || 'customer').toLowerCase() + '.com',
+          country: row.country,
+          logo_url: '🏢',
+          primary_color: '#0f766e',
+          support_tier: 'enterprise',
+          is_internal: row.is_internal === true,
+          created_at: row.created_at
+        }));
+        
+        return { data: mappedData, count: count || 0 };
+      },
+      () => ({ data: [], count: 0 })
+    );
+  },
+
   async createTenant(tenant: Omit<Tenant, 'id' | 'created_at'>, createdBy?: { id: string, name: string }): Promise<Tenant> {
     return safeExecute<Tenant>(
       async () => {
@@ -784,6 +823,7 @@ export const api = {
           body: {
             name: tenant.name,
             domain: tenant.domain,
+            country: tenant.country,
             createdBy: createdBy || null
           }
         });
@@ -829,6 +869,7 @@ export const api = {
         const payload: any = {};
         if (updates.name) payload.customer_name = updates.name;
         if (updates.domain) payload.customer_code = updates.domain.replace('.com', '').toUpperCase();
+        if (updates.country !== undefined) payload.country = updates.country;
         
         const { data, error } = await supabase.from('customers').update(payload).eq('id', id).select().single();
         if (error) throw error;
@@ -836,6 +877,7 @@ export const api = {
           id: data.id,
           name: data.customer_name,
           domain: (data.customer_code || 'customer').toLowerCase() + '.com',
+          country: data.country,
           logo_url: '🏢',
           primary_color: '#0f766e',
           support_tier: 'enterprise',
@@ -948,6 +990,7 @@ export const api = {
             customer_name: ticket.customers?.customer_name || '',
             creator_name: ticket.creator?.full_name || 'Unknown User',
             assigned_to_name: ticket.assigned_to ? (assigneeMap.get(ticket.assigned_to) || 'Unassigned') : 'Unassigned',
+            legacy_assigned_to: ticket.legacy_assigned_to || null,
             created_by: ticket.created_by,
             assigned_to: ticket.assigned_to || null,
             tenant_id: ticket.customer_id || null,
@@ -982,6 +1025,135 @@ export const api = {
             tenant_name: tenant ? tenant.name : 'Unknown Tenant'
           };
         });
+      }
+    );
+  },
+
+  async getDashboardAnalytics(fromDate: string, toDate: string, customerIds: string[], engineerIds: string[]): Promise<any> {
+    return safeExecute(
+      async () => {
+        const { data, error } = await supabase.rpc('get_dashboard_analytics', {
+          p_from_date: fromDate,
+          p_to_date: toDate,
+          p_customer_ids: customerIds?.length > 0 ? customerIds : null,
+          p_engineer_ids: engineerIds?.length > 0 ? engineerIds : null,
+        });
+        if (error) throw error;
+        return data;
+      },
+      () => null
+    );
+  },
+
+async getTicketsPaginated(page: number = 1, limit: number = 50, customerId?: string | null, search?: string, engineerId?: string | null): Promise<{ data: Ticket[], count: number }> {
+    return safeExecute(
+      async () => {
+        const from = (page - 1) * limit;
+        const to = from + limit - 1;
+
+        let query = supabase
+          .from('tickets')
+          .select(`
+            *,
+            ticket_statuses(status_code, status_name),
+            customers(customer_name),
+            products(product_name, product_code),
+            priorities(priority_name),
+            creator:users!created_by(full_name),
+            diagnostic_category:ai_diagnostic_categories(category_name, category_name_ar)
+          `, { count: 'exact' });
+
+        if (customerId === 'none') {
+          query = query.is('customer_id', null);
+        } else if (customerId) {
+          query = query.eq('customer_id', customerId);
+        }
+
+        if (engineerId === 'unassigned') {
+          query = query.is('assigned_to', null).is('legacy_assigned_to', null);
+        } else if (engineerId && engineerId.startsWith('legacy:')) {
+          query = query.eq('legacy_assigned_to', engineerId.slice('legacy:'.length));
+        } else if (engineerId) {
+          query = query.eq('assigned_to', engineerId);
+        }
+
+        if (search && search.trim()) {
+          const term = search.trim().replace(/[%,]/g, '');
+          query = query.or(`subject.ilike.%${term}%,description.ilike.%${term}%,ticket_no.ilike.%${term}%`);
+        }
+
+        const { data, error, count } = await query
+          .range(from, to)
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          console.log('[DEBUG api.getTicketsPaginated] error:', error);
+          throw error;
+        }
+
+        const uniqueAssignedTo = Array.from(new Set((data || []).map((t: any) => t.assigned_to).filter(Boolean)));
+        const assigneeMap = new Map<string, string>();
+        
+        if (uniqueAssignedTo.length > 0) {
+          const { data: usersData, error: usersError } = await supabase
+            .from('users')
+            .select('id, full_name')
+            .in('id', uniqueAssignedTo);
+            
+          if (!usersError && usersData) {
+            usersData.forEach((u: any) => {
+              assigneeMap.set(u.id, u.full_name);
+            });
+          }
+        }
+
+        const mappedData = (data || []).map((ticket: any) => {
+          const sCode = ticket.ticket_statuses?.status_code || '';
+          
+          let frontendStatus = 'open';
+          if (sCode === 'NEW') frontendStatus = 'open';
+          else if (sCode === 'ASSIGNED' || sCode === 'INVESTIGATION' || sCode === 'PENDING_CUSTOMER') frontendStatus = 'in_progress';
+          else if (sCode === 'RESOLVED') frontendStatus = 'resolved';
+          else if (sCode === 'CLOSED') frontendStatus = 'closed';
+          else if (sCode === 'PENDING_APPROVAL') frontendStatus = 'pending_approval';
+          else frontendStatus = ticket.status || 'open';
+
+          if (sCode === 'INVESTIGATION' && ticket.resolution_draft) {
+            frontendStatus = 'pending_approval';
+          }
+
+          const priorityName = ticket.priorities?.priority_name || 'Medium';
+
+          return {
+            ...ticket,
+            id: ticket.id,
+            title: ticket.subject || 'SWIFT Delays',
+            description: ticket.description,
+            status: frontendStatus,
+            status_code: sCode,
+            status_name: ticket.ticket_statuses?.status_name || sCode || ticket.status,
+            priority: priorityName.toLowerCase(),
+            priority_name: priorityName,
+            product_name: ticket.products?.product_name || 'AML-Compliance Engine',
+            customer_name: ticket.customers?.customer_name || '',
+            creator_name: ticket.creator?.full_name || 'Unknown User',
+            assigned_to_name: ticket.assigned_to ? (assigneeMap.get(ticket.assigned_to) || 'Unassigned') : 'Unassigned',
+            legacy_assigned_to: ticket.legacy_assigned_to || null,
+            created_by: ticket.created_by,
+            assigned_to: ticket.assigned_to || null,
+            tenant_id: ticket.customer_id || null,
+            category: ticket.products?.product_code?.toLowerCase() || 'other',
+            diagnostic_category: ticket.diagnostic_category || null,
+            created_at: ticket.created_at,
+            updated_at: ticket.updated_at,
+            justification_submitted_at: ticket.justification_submitted_at || null
+          } as unknown as Ticket;
+        });
+
+        return { data: mappedData, count: count || 0 };
+      },
+      () => {
+        return { data: [], count: 0 };
       }
     );
   },
@@ -1506,7 +1678,7 @@ export const api = {
 
   getOrganizationProducts: async (organizationId: string): Promise<OrganizationProduct[]> => {
     try {
-      const selectStr = `*, product:products!product_id(id, product_code, product_name, description, icon, color, display_order, is_active)`;
+      const selectStr = `*, product:products(id, product_code, product_name, description, icon, color, display_order, is_active)`;
       
       const { data, error } = await supabase
         .from('organization_products')
@@ -1515,7 +1687,12 @@ export const api = {
         .eq('is_active', true);
         
       if (error) {
-        console.error("Failed to fetch organization_products:", error);
+        console.error("Failed to fetch organization_products. FULL ERROR:", JSON.stringify({
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint
+        }, null, 2));
         return [];
       }
       

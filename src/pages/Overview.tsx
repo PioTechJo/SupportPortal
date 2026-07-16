@@ -9,10 +9,10 @@ import Papa from 'papaparse';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell 
 } from 'recharts';
-import { useTickets } from '../hooks/useTickets';
+import { useTicketsPaginated } from '../hooks/useTickets';
 import { 
   Building, Clock, AlertTriangle, FileSpreadsheet, Filter, CheckCircle2, TrendingUp,
-  Inbox, Users, ChevronDown, Check, ShieldAlert, Download, List,
+  Inbox, Users, ChevronDown, ChevronUp, Check, ShieldAlert, Download, List,
   Plus, Activity, ChevronRight, RotateCcw
 } from 'lucide-react';
 
@@ -94,7 +94,8 @@ const formatDuration = (startStr: string, endStr: string | null) => {
 export const Overview: React.FC = () => {
   const { user } = useAuth();
   const { tenants } = useTenant();
-  const { tickets: dashboardTickets, activeTicketsCount, isLoading: dashLoading } = useTickets();
+  const { data: recentTicketsData } = useTicketsPaginated(1, 5);
+  const dashboardTickets = recentTicketsData?.data || [];
   const navigate = useNavigate();
   const { t } = useTranslation();
 
@@ -102,9 +103,7 @@ export const Overview: React.FC = () => {
   const isAdmin = ['ADMIN', 'ADMINISTRATOR', 'SYS_ADMIN', 'CEO', 'SUPPORT_MANAGER'].includes(userRoleUp);
 
   // Filter States for Analytics
-  const [fromDate, setFromDate] = useState<string>(
-    new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  );
+  const [fromDate, setFromDate] = useState<string>('2020-01-01');
   const [toDate, setToDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   );
@@ -112,28 +111,39 @@ export const Overview: React.FC = () => {
   const [selectedEngineers, setSelectedEngineers] = useState<string[]>([]);
   const [selectedEscalationTeams, setSelectedEscalationTeams] = useState<string[]>([]);
   const [selectedEscalationDevelopers, setSelectedEscalationDevelopers] = useState<string[]>([]);
+  const [selectedYear, setSelectedYear] = useState<string>('all');
 
-  // Load all tickets for Analytics
-  const { data: tickets = [], isLoading: ticketsLoading } = useQuery({
-    queryKey: ['tickets'],
-    queryFn: () => api.getTickets(),
-    refetchInterval: 15000,
+  const yearOptions = useMemo(() => {
+    const currentYear = new Date(toDate).getFullYear();
+    const years = [];
+    for (let y = currentYear; y >= 2015; y--) years.push(y);
+    return years;
+  }, [toDate]);
+
+  const handleYearChange = (year: string) => {
+    setSelectedYear(year);
+    if (year === 'all') {
+      setFromDate('2020-01-01');
+      setToDate(new Date().toISOString().split('T')[0]);
+    } else {
+      setFromDate(`${year}-01-01`);
+      setToDate(`${year}-12-31`);
+    }
+  };
+
+  // Fetch Server-Side Dashboard Analytics
+  const { data: analyticsData, isLoading: analyticsLoading, error: analyticsError } = useQuery({
+    queryKey: ['dashboardAnalytics', fromDate, toDate, selectedCustomerIds, selectedEngineers],
+    queryFn: () => api.getDashboardAnalytics(fromDate, toDate, selectedCustomerIds, selectedEngineers),
+    refetchInterval: 30000,
+    retry: false,
   });
 
-  // Load escalations
-  const { data: escalations = [], isLoading: escalationsLoading } = useQuery({
-    queryKey: ['internalEscalations'],
-    queryFn: () => api.getAllInternalEscalations(),
-    refetchInterval: 15000,
-  });
-
-  console.log("Escalations RAW Count:", escalations.length);
-  if (escalations.length > 0) {
-    console.log("Escalations First Item:", JSON.stringify(escalations[0]));
+  if (analyticsError) {
+    console.error('[Overview] RPC get_dashboard_analytics failed:', analyticsError);
   }
-  console.log("Current Filters -> fromDate:", fromDate, "toDate:", toDate);
 
-  const isLoading = ticketsLoading || escalationsLoading || dashLoading;
+  const isLoading = analyticsLoading;
 
   // --- Dashboard Metrics Calculation ---
   const currentAndRecent = dashboardTickets.slice(0, 5);
@@ -163,171 +173,82 @@ export const Overview: React.FC = () => {
     }
   };
 
-  // --- Analytics Metrics Calculation ---
-  const uniqueEngineers = useMemo(() => {
-    const engs = new Map<string, string>();
-    tickets.forEach(t => {
-      if (t.assigned_to) {
-        engs.set(t.assigned_to, t.assigned_to_name || 'Unknown Engineer');
+  // --- Analytics Metrics Extraction ---
+  const metrics = analyticsData?.metrics || { new_tickets: 0, reopened_tickets: 0, in_progress_tickets: 0, closed_tickets: 0 };
+  const customerChartData = analyticsData?.ticketsByBank || [];
+  const customerListData = analyticsData?.ticketsByBankAll || [];
+  const productChartData = analyticsData?.ticketsByProduct || [];
+  const agentPerformance = analyticsData?.engineerPerformance || [];
+
+  type EngineerSortColumn = 'name' | 'assigned' | 'resolved' | 'avgTime';
+  const [engineerSortColumn, setEngineerSortColumn] = useState<EngineerSortColumn>('assigned');
+  const [engineerSortDirection, setEngineerSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  const handleEngineerSort = (column: EngineerSortColumn) => {
+    if (engineerSortColumn === column) {
+      setEngineerSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setEngineerSortColumn(column);
+      setEngineerSortDirection('asc');
+    }
+  };
+
+  const EngineerSortIcon = ({ column }: { column: EngineerSortColumn }) => {
+    if (engineerSortColumn !== column) return null;
+    return engineerSortDirection === 'asc' ? <ChevronUp size={13} className="inline ml-1" /> : <ChevronDown size={13} className="inline ml-1" />;
+  };
+
+  const sortedAgentPerformance = useMemo(() => {
+    return [...agentPerformance].sort((a: any, b: any) => {
+      let valA = a[engineerSortColumn];
+      let valB = b[engineerSortColumn];
+      if (engineerSortColumn === 'name') {
+        valA = (valA || '').toString().toLowerCase();
+        valB = (valB || '').toString().toLowerCase();
       }
+      if (valA < valB) return engineerSortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return engineerSortDirection === 'asc' ? 1 : -1;
+      return 0;
     });
-    return Array.from(engs.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
-  }, [tickets]);
-
-  const analyticsTickets = useMemo(() => {
-    return tickets.filter(ticket => {
-      const ticketDate = new Date(ticket.created_at).toISOString().split('T')[0];
-      if (ticketDate < fromDate || ticketDate > toDate) return false;
-      if (selectedCustomerIds.length > 0) {
-        const cId = ticket.customer_id || ticket.tenant_id;
-        if (!cId || !selectedCustomerIds.includes(cId)) return false;
-      }
-      if (selectedEngineers.length > 0) {
-        if (!ticket.assigned_to || !selectedEngineers.includes(ticket.assigned_to)) return false;
-      }
-      return true;
-    });
-  }, [tickets, fromDate, toDate, selectedCustomerIds, selectedEngineers]);
-
-  const metrics = useMemo(() => {
-    let newTickets = 0;
-    let reopenedTickets = 0;
-    let inProgressTickets = 0;
-    let closedTickets = 0;
-
-    analyticsTickets.forEach(t => {
-      const code = (t.status_code || '').toUpperCase();
-      if (code === 'NEW') newTickets++;
-      else if (code === 'REOPENED') reopenedTickets++;
-      else if (code === 'INVESTIGATION') inProgressTickets++;
-      else if (code === 'CLOSED' || code === 'APPROVED') closedTickets++;
-    });
-
-    return { newTickets, reopenedTickets, inProgressTickets, closedTickets };
-  }, [analyticsTickets]);
+  }, [agentPerformance, engineerSortColumn, engineerSortDirection]);
+  const developerWorkload = analyticsData?.developerWorkload || [];
+  const rawEscalations = analyticsData?.escalations || [];
 
   const escalationMetrics = useMemo(() => {
-    const filtered = escalations.filter(esc => {
-      const escDate = new Date(esc.created_at).toISOString().split('T')[0];
-      if (escDate < fromDate || escDate > toDate) return false;
-      const cId = esc.tickets?.customer_id || esc.tickets?.tenant_id;
-      if (selectedCustomerIds.length > 0) {
-        if (!cId || !selectedCustomerIds.includes(cId)) return false;
-      }
-      const assignedTo = esc.tickets?.assigned_to;
-      if (selectedEngineers.length > 0) {
-        if (!assignedTo || !selectedEngineers.includes(assignedTo)) return false;
-      }
-      return true;
-    });
-
-    const uniqueEscalationTickets = new Set(filtered.map(f => f.ticket_id)).size;
-
-    return { totalEscalations: uniqueEscalationTickets, rawData: filtered };
-  }, [escalations, fromDate, toDate, selectedCustomerIds, selectedEngineers]);
+    const uniqueEscalationTickets = new Set(rawEscalations.map((f: any) => f.ticket_id)).size;
+    return { totalEscalations: uniqueEscalationTickets, rawData: rawEscalations };
+  }, [rawEscalations]);
 
   const escalationTeamOptions = useMemo(() => {
-    const teams = new Set(escalationMetrics.rawData.map((esc: any) => esc.teams?.team_name).filter(Boolean));
+    const teams = new Set(rawEscalations.map((esc: any) => esc.team_name).filter(Boolean));
     return Array.from(teams).map(t => ({ id: t as string, name: t as string }));
-  }, [escalationMetrics.rawData]);
+  }, [rawEscalations]);
 
   const escalationDeveloperOptions = useMemo(() => {
-    const devs = new Set(escalationMetrics.rawData.map((esc: any) => esc.escalated_developer_name).filter(Boolean));
+    const devs = new Set(rawEscalations.map((esc: any) => esc.escalated_developer_name).filter(Boolean));
     return Array.from(devs).map(d => ({ id: d as string, name: d as string }));
-  }, [escalationMetrics.rawData]);
+  }, [rawEscalations]);
 
   const displayedEscalations = useMemo(() => {
-    let result = escalationMetrics.rawData;
+    let result = rawEscalations;
     if (selectedEscalationTeams.length > 0) {
-      result = result.filter((esc: any) => selectedEscalationTeams.includes(esc.teams?.team_name));
+      result = result.filter((esc: any) => selectedEscalationTeams.includes(esc.team_name));
     }
     if (selectedEscalationDevelopers.length > 0) {
       result = result.filter((esc: any) => selectedEscalationDevelopers.includes(esc.escalated_developer_name));
     }
     return result.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  }, [escalationMetrics.rawData, selectedEscalationTeams, selectedEscalationDevelopers]);
+  }, [rawEscalations, selectedEscalationTeams, selectedEscalationDevelopers]);
 
-  const developerWorkload = useMemo(() => {
-    const workload: Record<string, { developer: string, team: string, total: number, pending: number, returned: number }> = {};
-    escalationMetrics.rawData.forEach((esc: any) => {
-      const devName = esc.escalated_developer_name;
-      if (devName) {
-        const teamName = esc.teams?.team_name || 'Unknown Team';
-        if (!workload[devName]) {
-          workload[devName] = { developer: devName, team: teamName, total: 0, pending: 0, returned: 0 };
-        }
-        workload[devName].total++;
-        if (esc.escalation_returned_at) {
-          workload[devName].returned++;
-        } else {
-          workload[devName].pending++;
-        }
-      }
-    });
-    return Object.values(workload).sort((a, b) => b.total - a.total);
-  }, [escalationMetrics.rawData]);
-
-  const customerChartData = useMemo(() => {
-    const counts: Record<string, number> = {};
-    analyticsTickets.forEach(t => {
-      const bName = t.customer_name || t.tenant_name || 'Global Core';
-      counts[bName] = (counts[bName] || 0) + 1;
-    });
-    return Object.entries(counts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count).slice(0, 10);
-  }, [analyticsTickets]);
-
-  const productChartData = useMemo(() => {
-    const counts: Record<string, number> = {};
-    analyticsTickets.forEach(t => {
-      const pName = t.product_name || 'PIO-INTEGRATOR API Gateway';
-      counts[pName] = (counts[pName] || 0) + 1;
-    });
-    return Object.entries(counts).map(([name, value]) => ({ name, value }));
-  }, [analyticsTickets]);
-
-
-
-  const agentPerformance = useMemo(() => {
-    const resolvedCodes = ['RESOLVED', 'CLOSED', 'APPROVED'];
-    const performance: Record<string, { id: string; name: string; assigned: number; resolved: number; totalHours: number }> = {};
-    analyticsTickets.forEach(t => {
-      const code = (t.status_code || '').toUpperCase();
-      const isResolved = resolvedCodes.includes(code) || ['resolved', 'closed'].includes(t.status);
-      const agentId = t.assigned_to || 'unassigned';
-      const agentName = t.assigned_to_name || 'Unassigned';
-      if (!performance[agentId]) performance[agentId] = { id: agentId, name: agentName, assigned: 0, resolved: 0, totalHours: 0 };
-      performance[agentId].assigned++;
-      if (isResolved) {
-        performance[agentId].resolved++;
-        const resolvedAtStr = t.resolution_approved_at || t.resolved_at || t.updated_at;
-        const resDate = resolvedAtStr ? new Date(resolvedAtStr) : new Date(t.updated_at);
-        const crDate = new Date(t.created_at);
-        const hours = (resDate.getTime() - crDate.getTime()) / (1000 * 60 * 60);
-        if (!isNaN(hours) && hours >= 0) performance[agentId].totalHours += hours;
-      }
-    });
-    return Object.values(performance).map(p => {
-      const avgTime = p.resolved > 0 ? ((p.totalHours / p.resolved) / 24).toFixed(1) : '0.0';
-      return { ...p, avgTime: parseFloat(avgTime) };
-    }).sort((a, b) => b.resolved - a.resolved);
-  }, [analyticsTickets]);
+  const uniqueEngineers = []; // Keep for now if needed, though we should populate it differently if the filter depends on it. We can populate it from agentPerformance.
+  if (agentPerformance.length > 0) {
+     agentPerformance.forEach((a: any) => {
+       if (a.id !== 'unassigned') uniqueEngineers.push({id: a.id, name: a.name});
+     });
+  }
 
   const handleExportCSV = () => {
-    const csvRows = analyticsTickets.map(t => ({
-      'Ticket ID': t.id, 'Title': t.title, 'Status': t.status_code || t.status,
-      'Priority': t.priority_name || t.priority, 'Product': t.product_name,
-      'Customer/Bank': t.customer_name || t.tenant_name,
-      'Created At': new Date(t.created_at).toLocaleString(),
-      'Resolved At': t.resolution_approved_at || t.resolved_at || 'N/A',
-      'Assigned Agent': t.assigned_to_name || 'Unassigned'
-    }));
-    const csvContent = Papa.unparse(csvRows);
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `Support_Portal_Analytics_Report_${fromDate}_to_${toDate}.csv`);
-    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+     alert("CSV Export requires detailed ticket data which is no longer loaded on the dashboard. This feature will be moved to the Tickets List page.");
   };
 
   return (
@@ -363,10 +284,18 @@ export const Overview: React.FC = () => {
         <div className="flex flex-wrap gap-2.5 items-center bg-slate-50 p-2 rounded-lg border border-slate-200">
           <MultiSelect options={tenants.map(t => ({ id: t.id, name: t.name }))} selectedValues={selectedCustomerIds} onChange={setSelectedCustomerIds} placeholder={t('overview.allBanks')} />
           <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1 focus-within:ring-1 focus-within:ring-blue-500">
-            <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="bg-transparent text-slate-900 text-xs outline-none w-[110px]" />
+            <input type="date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); setSelectedYear('all'); }} className="bg-transparent text-slate-900 text-xs outline-none w-[110px]" />
             <span className="text-slate-400 text-xs">{t('overview.to')}</span>
-            <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="bg-transparent text-slate-900 text-xs outline-none w-[110px]" />
+            <input type="date" value={toDate} onChange={(e) => { setToDate(e.target.value); setSelectedYear('all'); }} className="bg-transparent text-slate-900 text-xs outline-none w-[110px]" />
           </div>
+          <select
+            value={selectedYear}
+            onChange={(e) => handleYearChange(e.target.value)}
+            className="bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="all">All Years</option>
+            {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
           <MultiSelect options={uniqueEngineers} selectedValues={selectedEngineers} onChange={setSelectedEngineers} placeholder={t('overview.allEngineers')} />
           <button onClick={handleExportCSV} className="flex items-center gap-1.5 bg-blue-500 hover:bg-blue-600 text-white font-semibold px-3.5 py-1.5 rounded-lg text-xs transition shadow-sm cursor-pointer">
             <FileSpreadsheet size={13} /> Export CSV
@@ -375,7 +304,7 @@ export const Overview: React.FC = () => {
       </div>
 
       {/* Analytics Metrics Cards */}
-      {ticketsLoading ? (
+      {analyticsLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 animate-pulse">
           {[1,2,3,4,5].map(i => <div key={i} className="bg-white h-24 rounded-xl border border-slate-200" />)}
         </div>
@@ -390,7 +319,7 @@ export const Overview: React.FC = () => {
               <Inbox size={18} className="text-blue-600" />
             </div>
             <div className="mt-2.5">
-              <span className="text-3xl font-bold text-slate-900">{metrics.newTickets}</span>
+              <span className="text-3xl font-bold text-slate-900">{metrics.new_tickets}</span>
               <span className="text-[10.5px] text-slate-500 block mt-1">{t('overview.newDesc')}</span>
             </div>
           </div>
@@ -404,7 +333,7 @@ export const Overview: React.FC = () => {
               <RotateCcw size={18} className="text-indigo-600" />
             </div>
             <div className="mt-2.5">
-              <span className="text-3xl font-bold text-slate-900">{metrics.reopenedTickets}</span>
+              <span className="text-3xl font-bold text-slate-900">{metrics.reopened_tickets}</span>
               <span className="text-[10.5px] text-slate-500 block mt-1">{t('overview.reopenedDesc')}</span>
             </div>
           </div>
@@ -418,7 +347,7 @@ export const Overview: React.FC = () => {
               <Activity size={18} className="text-blue-500" />
             </div>
             <div className="mt-2.5">
-              <span className="text-3xl font-bold text-slate-900">{metrics.inProgressTickets}</span>
+              <span className="text-3xl font-bold text-slate-900">{metrics.in_progress_tickets}</span>
               <span className="text-[10.5px] text-slate-500 block mt-1">{t('overview.inProgressDesc')}</span>
             </div>
           </div>
@@ -446,7 +375,7 @@ export const Overview: React.FC = () => {
               <CheckCircle2 size={18} className="text-emerald-600" />
             </div>
             <div className="mt-2.5">
-              <span className="text-3xl font-bold text-slate-900">{metrics.closedTickets}</span>
+              <span className="text-3xl font-bold text-slate-900">{metrics.closed_tickets}</span>
               <span className="text-[10.5px] text-slate-500 block mt-1">{t('overview.closedDesc')}</span>
             </div>
           </div>
@@ -454,11 +383,11 @@ export const Overview: React.FC = () => {
       )}
 
       {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* By Bank */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+        {/* By Bank - Chart */}
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs flex flex-col">
           <div className="border-b border-slate-100 pb-3 mb-4 text-start">
-            <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm"><Building size={16} className="text-slate-500" /> {t('overview.ticketsByBank')}</h3>
+            <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm"><Building size={16} className="text-slate-500" /> {t('overview.ticketsByBank')} <span className="text-slate-400 font-normal">(Top 10)</span></h3>
             <p className="text-xs text-slate-500 mt-1">{t('overview.ticketsByBankDesc')}</p>
           </div>
           <div className="h-72 w-full">
@@ -471,14 +400,14 @@ export const Overview: React.FC = () => {
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="#64748b" />
                   <YAxis tick={{ fontSize: 11 }} stroke="#64748b" />
                   <Tooltip wrapperStyle={{ fontSize: 12, borderRadius: '8px' }} cursor={{ fill: '#f1f5f9' }} />
-                  <Bar 
-                    dataKey="count" 
-                    fill="#3b82f6" 
-                    radius={[4, 4, 0, 0]} 
-                    barSize={32} 
+                  <Bar
+                    dataKey="count"
+                    fill="#3b82f6"
+                    radius={[4, 4, 0, 0]}
+                    barSize={32}
                     onClick={(data) => {
                       if (data && data.name) {
-                        navigate(`/tickets?customer=${encodeURIComponent(data.name)}`);
+                        navigate(`/tickets?customerId=${encodeURIComponent(data.id || 'none')}&customer=${encodeURIComponent(data.name)}`);
                       }
                     }}
                     cursor="pointer"
@@ -489,7 +418,36 @@ export const Overview: React.FC = () => {
             )}
           </div>
         </div>
-        
+
+        {/* By Bank - Full List */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-xs flex flex-col overflow-hidden">
+          <div className="border-b border-slate-100 p-6 pb-3 text-start">
+            <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm"><List size={16} className="text-slate-500" /> {t('overview.ticketsByBank')} — All Banks</h3>
+            <p className="text-xs text-slate-500 mt-1">Full breakdown for the selected period ({customerListData.length} banks)</p>
+          </div>
+          <div className="h-72 overflow-y-auto">
+            {customerListData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-xs text-slate-400 italic">{t('overview.noBankData')}</div>
+            ) : (
+              <table className="w-full text-xs text-slate-700">
+                <tbody className="divide-y divide-slate-100">
+                  {customerListData.map((bank: any, idx: number) => (
+                    <tr
+                      key={bank.name}
+                      onClick={() => navigate(`/tickets?customerId=${encodeURIComponent(bank.id || 'none')}&customer=${encodeURIComponent(bank.name)}`)}
+                      className="hover:bg-slate-50 cursor-pointer transition"
+                    >
+                      <td className="py-2 px-6 text-slate-400 w-6">{idx + 1}</td>
+                      <td className="py-2 px-2 font-medium text-slate-900 truncate">{bank.name}</td>
+                      <td className="py-2 px-6 text-right font-bold text-slate-700">{bank.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+
         {/* By Product */}
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs flex flex-col">
           <div className="border-b border-slate-100 pb-3 mb-4 text-start">
@@ -537,14 +495,26 @@ export const Overview: React.FC = () => {
           <table className="w-full min-w-[600px] border-collapse text-start text-xs text-slate-700">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
-                <th className="py-3 px-6">{t('overview.engineer')}</th><th className="py-3 px-6 text-center">{t('overview.activeQueue')}</th><th className="py-3 px-6 text-center">{t('overview.resolved')}</th><th className="py-3 px-6 text-center">{t('overview.avgResolutionSpeed')}</th><th className="py-3 px-6">{t('overview.status')}</th>
+                <th className="py-3 px-6 cursor-pointer hover:bg-slate-100 transition-colors select-none" onClick={() => handleEngineerSort('name')}>
+                  {t('overview.engineer')}<EngineerSortIcon column="name" />
+                </th>
+                <th className="py-3 px-6 text-center cursor-pointer hover:bg-slate-100 transition-colors select-none" onClick={() => handleEngineerSort('assigned')}>
+                  {t('overview.activeQueue')}<EngineerSortIcon column="assigned" />
+                </th>
+                <th className="py-3 px-6 text-center cursor-pointer hover:bg-slate-100 transition-colors select-none" onClick={() => handleEngineerSort('resolved')}>
+                  {t('overview.resolved')}<EngineerSortIcon column="resolved" />
+                </th>
+                <th className="py-3 px-6 text-center cursor-pointer hover:bg-slate-100 transition-colors select-none" onClick={() => handleEngineerSort('avgTime')}>
+                  {t('overview.avgResolutionSpeed')}<EngineerSortIcon column="avgTime" />
+                </th>
+                <th className="py-3 px-6">{t('overview.status')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {agentPerformance.length === 0 ? (
+              {sortedAgentPerformance.length === 0 ? (
                 <tr><td colSpan={5} className="py-8 text-center text-slate-400 italic">{t('overview.noEngineerActions')}</td></tr>
               ) : (
-                agentPerformance.map(agent => (
+                sortedAgentPerformance.map(agent => (
                   <tr 
                     key={agent.id} 
                     className="hover:bg-slate-100 transition cursor-pointer"
@@ -677,7 +647,7 @@ export const Overview: React.FC = () => {
           <h3 className="font-bold text-slate-950 text-sm uppercase tracking-wider">{t('overview.recentTicketIntake')}</h3>
           <button onClick={() => navigate('/tickets')} className="text-xs text-teal-600 hover:text-teal-700 font-semibold cursor-pointer">{t('overview.viewAll')}</button>
         </div>
-        {dashLoading ? (
+        {analyticsLoading ? (
           <div className="space-y-4 mt-4">
             {[1,2,3].map((i) => <div key={i} className="animate-pulse flex gap-3"><div className="w-10 h-10 bg-slate-100 rounded-lg shrink-0" /><div className="flex-1 space-y-1.5 pt-1"><div className="h-3 bg-slate-100 rounded w-3/4" /><div className="h-2 bg-slate-100 rounded w-1/2" /></div></div>)}
           </div>

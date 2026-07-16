@@ -1,0 +1,31 @@
+Bank CM
+BankBI- Profitability
+BankBI-AML
+BankBI-CRS
+BankBI-Credit Bureau
+BankBI-DWH
+BankBI-FATCA
+BankBI-Fund Transfer Pricin(FTP)
+BankBI-GOAML
+BankBI-IFRS9
+BankBI-MIS
+BankBI-RBA
+BankBI-RR
+BankBI-Risk Assessment
+BankBPM-COL
+BankBPM-DM
+BankBPM-KYC/AC
+BankBPM-Loans
+BankBPM-PSO
+BankBPM-Payroll
+BankBPM-Real Estate
+BankBPM-Remedial
+BankBPM-ScreenDev
+BankBPM-Workflow
+CRM
+Legal
+Oracle License
+SAP-BO
+SAP-ETL
+Salary
+W4-Licenses

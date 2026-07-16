@@ -1,6 +1,6 @@
 import React from 'react';
 import { Tenant } from '../../types';
-import { Building2, Users, Ticket, Calendar, MoreVertical, Edit2, Ban, Eye } from 'lucide-react';
+import { Building2, Users, Ticket, Calendar, MoreVertical, Edit2, Ban, Eye, MapPin } from 'lucide-react';
 
 interface OrganizationCardProps {
   organization: Tenant;
@@ -43,9 +43,18 @@ export const OrganizationCard: React.FC<OrganizationCardProps> = ({
               <h3 className="text-lg font-bold text-slate-800 leading-tight">
                 {organization.name}
               </h3>
-              <p className="text-sm font-medium text-slate-500">
-                {organization.domain}
-              </p>
+              <div className="flex items-center gap-3 text-sm font-medium text-slate-500">
+                <span>{organization.domain}</span>
+                {organization.country && (
+                  <>
+                    <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                    <span className="flex items-center gap-1">
+                      <MapPin size={12} className="text-slate-400" />
+                      {organization.country}
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
           </div>
           

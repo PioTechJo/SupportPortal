@@ -89,7 +89,6 @@ Deno.serve(async (req) => {
 
       const payload = productsData.map((p: any) => ({
         organization_id,
-        product_id: p.id,             // 001_add_product_uuid_columns Phase 1
         product_code: p.product_code, // Insert the actual text code (e.g. 'DWH') for zero-regression
         is_active: true
       }))

@@ -7,8 +7,12 @@ import { Profile, Tenant } from '../types';
 import { Building2, Search, Plus, SlidersHorizontal, PackageOpen } from 'lucide-react';
 import { OrganizationCard } from '../components/organizations/OrganizationCard';
 import { NewOrganizationModal } from '../components/organizations/NewOrganizationModal';
+import { EditOrganizationModal } from '../components/organizations/EditOrganizationModal';
+import { OrganizationTable } from '../components/organizations/OrganizationTable';
 import { OrganizationDetails } from '../components/organizations/OrganizationDetails';
 import { UserDetails } from '../components/users/UserDetails';
+import { Globe, LayoutGrid, List } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 
 export const Organizations: React.FC = () => {
   const navigate = useNavigate();
@@ -25,11 +29,34 @@ export const Organizations: React.FC = () => {
   
   // Modals
   const [isNewOrgOpen, setIsNewOrgOpen] = useState(false);
+  const [editingOrg, setEditingOrg] = useState<Tenant | null>(null);
+
+  // View Mode
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(
+    () => (localStorage.getItem('orgViewMode') as 'grid' | 'list') || 'grid'
+  );
+
+  const toggleViewMode = (mode: 'grid' | 'list') => {
+    setViewMode(mode);
+    localStorage.setItem('orgViewMode', mode);
+  };
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterTier, setFilterTier] = useState('all');
+  const [filterCountry, setFilterCountry] = useState('all');
+
+  const [page, setPage] = useState(1);
+  const limit = 50;
+
+  const { data: paginatedData, isLoading: isPaginatedLoading } = useQuery({
+    queryKey: ['organizations', page, filterCountry],
+    queryFn: () => api.getTenantsPaginated(page, limit, filterCountry)
+  });
+
+  const totalCount = paginatedData?.count || 0;
+  const totalPages = Math.ceil(totalCount / limit);
 
   // Guard redirection mechanism
   useEffect(() => {
@@ -59,8 +86,18 @@ export const Organizations: React.FC = () => {
     loadData();
   }, []);
 
-  // Filter organizations based on UI state
-  const filteredOrganizations = tenants.filter(org => {
+  // Extract unique countries
+  const uniqueCountries = React.useMemo(() => {
+    const countries = new Set<string>();
+    tenants.forEach(t => {
+      if (t.country) countries.add(t.country);
+    });
+    return Array.from(countries).sort();
+  }, [tenants]);
+
+  // Filter organizations based on UI state (search, status, tier still client-side)
+  // Country is now server-side via paginated API
+  const filteredOrganizations = (paginatedData?.data || []).filter(org => {
     const status = (org as any).status || 'active';
     
     // Status Filter
@@ -86,6 +123,12 @@ export const Organizations: React.FC = () => {
     loadData(); // refresh data
   };
 
+  const handleEditOrganization = async (id: string, data: any) => {
+    await api.updateTenant(id, data);
+    setEditingOrg(null);
+    loadData(); // refresh data
+  };
+
   if (selectedUser) {
     return (
       <UserDetails 
@@ -101,19 +144,29 @@ export const Organizations: React.FC = () => {
 
   if (selectedOrg) {
     return (
-      <OrganizationDetails 
-        organization={selectedOrg}
-        users={profiles}
-        initialTab={selectedOrgTab}
-        onBack={() => {
-          setSelectedOrg(null);
-          loadData(); // reload when going back to reflect changes
-        }}
-        onEdit={(org) => console.log('Edit org', org)}
-        onDeactivate={() => console.log('Deactivate org:', selectedOrg.id)}
-        onRefresh={loadData}
-        onUserClick={(user) => setSelectedUser(user)}
-      />
+      <>
+        <OrganizationDetails 
+          organization={selectedOrg}
+          users={profiles}
+          initialTab={selectedOrgTab}
+          onBack={() => {
+            setSelectedOrg(null);
+            loadData(); // reload when going back to reflect changes
+          }}
+          onEdit={(org) => setEditingOrg(org)}
+          onDeactivate={() => console.log('Deactivate org:', selectedOrg.id)}
+          onRefresh={loadData}
+          onUserClick={(user) => setSelectedUser(user)}
+        />
+        {editingOrg && (
+          <EditOrganizationModal 
+            isOpen={true}
+            initialData={editingOrg}
+            onClose={() => setEditingOrg(null)}
+            onSubmit={handleEditOrganization}
+          />
+        )}
+      </>
     );
   }
 
@@ -173,18 +226,59 @@ export const Organizations: React.FC = () => {
                 <option value="enterprise">Enterprise</option>
               </select>
             </div>
+
+            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600">
+              <Globe size={16} className="text-slate-400" />
+              <select 
+                value={filterCountry}
+                onChange={(e) => setFilterCountry(e.target.value)}
+                className="bg-transparent font-medium focus:outline-none text-slate-700 w-28 cursor-pointer max-w-[120px] truncate"
+              >
+                <option value="all">All Countries</option>
+                {uniqueCountries.map(country => (
+                  <option key={country} value={country}>{country}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <button 
-            onClick={() => setIsNewOrgOpen(true)}
-            className="w-full md:w-auto px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-bold shadow-sm flex items-center justify-center gap-2 transition-colors"
-          >
-            <Plus size={16} /> New Organization
-          </button>
+          <div className="flex items-center gap-4 w-full md:w-auto">
+            <div className="flex items-center p-1 bg-slate-100 rounded-lg border border-slate-200">
+              <button
+                onClick={() => toggleViewMode('grid')}
+                className={`p-1.5 rounded-md transition-colors ${
+                  viewMode === 'grid' 
+                    ? 'bg-white text-teal-600 shadow-sm' 
+                    : 'text-slate-400 hover:text-slate-600'
+                }`}
+                title="Grid View"
+              >
+                <LayoutGrid size={18} />
+              </button>
+              <button
+                onClick={() => toggleViewMode('list')}
+                className={`p-1.5 rounded-md transition-colors ${
+                  viewMode === 'list' 
+                    ? 'bg-white text-teal-600 shadow-sm' 
+                    : 'text-slate-400 hover:text-slate-600'
+                }`}
+                title="List View"
+              >
+                <List size={18} />
+              </button>
+            </div>
+
+            <button 
+              onClick={() => setIsNewOrgOpen(true)}
+              className="flex-1 md:flex-none px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-bold shadow-sm flex items-center justify-center gap-2 transition-colors"
+            >
+              <Plus size={16} /> New Organization
+            </button>
+          </div>
         </div>
 
-        {/* Organizations Grid */}
-        {loading ? (
+        {/* Organizations Content */}
+        {isPaginatedLoading ? (
           <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-500 mb-4" />
             Loading organizations...
@@ -203,7 +297,7 @@ export const Organizations: React.FC = () => {
               Create Organization
             </button>
           </div>
-        ) : (
+        ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-12">
             {filteredOrganizations.map(org => {
               const orgUsers = profiles.filter(p => (p.customer_id || p.tenant_id) === org.id);
@@ -221,6 +315,40 @@ export const Organizations: React.FC = () => {
               );
             })}
           </div>
+        ) : (
+          <div className="pb-12">
+            <OrganizationTable 
+              organizations={filteredOrganizations}
+              profiles={profiles}
+              onView={(org) => {
+                setSelectedOrg(org);
+                setSelectedOrgTab('overview');
+              }}
+            />
+          </div>
+        )}
+        
+        {/* Pagination Bar */}
+        {!isPaginatedLoading && filteredOrganizations.length > 0 && (
+          <div className="px-6 py-4 border-t border-slate-200 bg-white rounded-xl shadow-sm flex items-center justify-between text-sm text-slate-500 mt-2">
+            <div>Showing {(page - 1) * limit + 1} to {Math.min(page * limit, totalCount)} of {totalCount} organizations</div>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setPage(p => p - 1)}
+                disabled={page <= 1}
+                className="px-3 py-1 rounded bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-white transition-colors"
+              >
+                Previous
+              </button>
+              <button 
+                onClick={() => setPage(p => p + 1)}
+                disabled={page >= totalPages || totalPages === 0}
+                className="px-3 py-1 rounded bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-white transition-colors"
+              >
+                Next
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
@@ -229,6 +357,15 @@ export const Organizations: React.FC = () => {
         onClose={() => setIsNewOrgOpen(false)}
         onSubmit={handleCreateOrganization}
       />
+
+      {editingOrg && (
+        <EditOrganizationModal 
+          isOpen={true}
+          initialData={editingOrg}
+          onClose={() => setEditingOrg(null)}
+          onSubmit={handleEditOrganization}
+        />
+      )}
     </div>
   );
 };

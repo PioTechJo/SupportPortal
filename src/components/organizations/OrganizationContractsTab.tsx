@@ -39,7 +39,7 @@ export const OrganizationContractsTab: React.FC<OrganizationContractsTabProps> =
       
       const orgProductsPromise = supabase
         .from('organization_products')
-        .select('product_id, product:products(id, product_name)')
+        .select('product_code, product:products(id, product_name)')
         .eq('organization_id', organization.id)
         .eq('is_active', true);
 
