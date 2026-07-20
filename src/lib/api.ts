@@ -778,20 +778,25 @@ export const api = {
     );
   },
 
-  async getTenantsPaginated(page: number = 1, limit: number = 50, countryFilter?: string): Promise<{ data: Tenant[], count: number }> {
+  async getTenantsPaginated(page: number = 1, limit: number = 50, countryFilter?: string, search?: string): Promise<{ data: Tenant[], count: number }> {
     return safeExecute<{ data: Tenant[], count: number }>(
       async () => {
         const from = (page - 1) * limit;
         const to = from + limit - 1;
-        
+
         let query = supabaseAnon
           .from('customers')
           .select('*', { count: 'exact' });
-          
+
         if (countryFilter && countryFilter.toLowerCase() !== 'all') {
           query = query.eq('country', countryFilter);
         }
-        
+
+        if (search && search.trim()) {
+          const term = search.trim().replace(/[%,]/g, '');
+          query = query.or(`customer_name.ilike.%${term}%,customer_code.ilike.%${term}%`);
+        }
+
         const { data, error, count } = await query
           .range(from, to)
           .order('customer_name', { ascending: true });

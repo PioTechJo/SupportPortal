@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useTenant } from '../context/TenantContext';
@@ -185,6 +185,7 @@ export const Overview: React.FC = () => {
   const [engineerSortDirection, setEngineerSortDirection] = useState<'asc' | 'desc'>('desc');
 
   const handleEngineerSort = (column: EngineerSortColumn) => {
+    setEngineerPage(1);
     if (engineerSortColumn === column) {
       setEngineerSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
     } else {
@@ -211,6 +212,17 @@ export const Overview: React.FC = () => {
       return 0;
     });
   }, [agentPerformance, engineerSortColumn, engineerSortDirection]);
+
+  const engineerPageSize = 10;
+  const [engineerPage, setEngineerPage] = useState(1);
+  const engineerTotalPages = Math.max(1, Math.ceil(sortedAgentPerformance.length / engineerPageSize));
+  useEffect(() => {
+    if (engineerPage > engineerTotalPages) setEngineerPage(1);
+  }, [engineerTotalPages]);
+  const paginatedAgentPerformance = sortedAgentPerformance.slice(
+    (engineerPage - 1) * engineerPageSize,
+    engineerPage * engineerPageSize
+  );
   const developerWorkload = analyticsData?.developerWorkload || [];
   const rawEscalations = analyticsData?.escalations || [];
 
@@ -511,10 +523,10 @@ export const Overview: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {sortedAgentPerformance.length === 0 ? (
+              {paginatedAgentPerformance.length === 0 ? (
                 <tr><td colSpan={5} className="py-8 text-center text-slate-400 italic">{t('overview.noEngineerActions')}</td></tr>
               ) : (
-                sortedAgentPerformance.map(agent => (
+                paginatedAgentPerformance.map(agent => (
                   <tr 
                     key={agent.id} 
                     className="hover:bg-slate-100 transition cursor-pointer"
@@ -536,6 +548,30 @@ export const Overview: React.FC = () => {
             </tbody>
           </table>
         </div>
+        {sortedAgentPerformance.length > engineerPageSize && (
+          <div className="px-6 py-3 border-t border-slate-200 bg-slate-50/50 flex items-center justify-between text-xs text-slate-500">
+            <div>
+              Showing {(engineerPage - 1) * engineerPageSize + 1} to {Math.min(engineerPage * engineerPageSize, sortedAgentPerformance.length)} of {sortedAgentPerformance.length} engineers
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setEngineerPage(p => Math.max(1, p - 1))}
+                disabled={engineerPage <= 1}
+                className="px-3 py-1 rounded bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-white transition-colors"
+              >
+                Previous
+              </button>
+              <span className="text-slate-400">Page {engineerPage} of {engineerTotalPages}</span>
+              <button
+                onClick={() => setEngineerPage(p => Math.min(engineerTotalPages, p + 1))}
+                disabled={engineerPage >= engineerTotalPages}
+                className="px-3 py-1 rounded bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-white transition-colors"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">

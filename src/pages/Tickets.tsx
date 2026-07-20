@@ -105,13 +105,7 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
   const [sortColumn, setSortColumn] = useState<SortColumn>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
-  const [density, setDensity] = useState<'compact' | 'comfortable'>(() => {
-    return (localStorage.getItem('ticketsTableDensity') as 'compact' | 'comfortable') || 'compact';
-  });
-  useEffect(() => {
-    localStorage.setItem('ticketsTableDensity', density);
-  }, [density]);
-  const cellPadding = density === 'compact' ? 'py-2' : 'py-4';
+  const cellPadding = 'py-2';
 
   const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
     const saved = localStorage.getItem('ticketsTableColumnWidths');
@@ -687,22 +681,6 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
                 Approve Selected ({selectedTickets.length})
               </button>
             )}
-
-            {/* Density Toggle */}
-            <div className="flex items-center bg-white border border-slate-200 rounded-lg p-0.5">
-              <button
-                onClick={() => setDensity('compact')}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${density === 'compact' ? 'bg-[#eff6ff] text-[#3B82F6]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}
-              >
-                Compact
-              </button>
-              <button
-                onClick={() => setDensity('comfortable')}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${density === 'comfortable' ? 'bg-[#eff6ff] text-[#3B82F6]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}
-              >
-                Comfortable
-              </button>
-            </div>
 
             {/* Column Visibility */}
             <div className="relative">

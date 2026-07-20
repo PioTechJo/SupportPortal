@@ -234,7 +234,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       <aside
         className={`
           fixed md:sticky top-0 h-screen overflow-y-auto bg-[#1a1f2e] flex flex-col py-4 border-r border-[#1a1f2e] shrink-0 z-40 custom-scrollbar
-          transition-transform duration-200 md:translate-x-0
+          transition-transform duration-200 md:!translate-x-0
           ${isMobileMenuOpen ? 'translate-x-0' : 'ltr:-translate-x-full rtl:translate-x-full'}
         `}
         style={{
@@ -424,18 +424,23 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
       {/* Main Area */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        
+
+        {/* Persistent mobile menu button - always available even on pages that hide the header below (e.g. ticket detail) */}
+        {!isMobileMenuOpen && (
+          <button
+            onClick={() => { setIsExpanded(true); setIsMobileMenuOpen(true); }}
+            className="md:hidden fixed top-3 left-3 rtl:left-auto rtl:right-3 z-50 p-2 rounded-lg bg-white border border-slate-200 shadow-sm text-slate-600 hover:bg-slate-50"
+            title={t('layout.expandSidebar')}
+          >
+            <Menu size={20} />
+          </button>
+        )}
+
         {/* Top bar */}
         {!location.pathname.match(/^\/tickets\/[a-zA-Z0-9-]+/) && (
         <header className="h-[60px] bg-white border-b border-slate-200 flex items-center justify-between px-3 md:px-6 shrink-0 z-30">
           <div className="flex items-center text-sm min-w-0">
-            <button
-              onClick={() => { setIsExpanded(true); setIsMobileMenuOpen(true); }}
-              className="md:hidden mr-2 p-2 -ml-1 rounded-lg text-slate-500 hover:bg-slate-100 shrink-0"
-              title={t('layout.expandSidebar')}
-            >
-              <Menu size={20} />
-            </button>
+            <span className="w-9 shrink-0 md:hidden" aria-hidden="true" />
             <span className="text-slate-400 font-medium hidden sm:inline">{t('layout.home')}</span>
             <span className="mx-2 text-slate-300 rtl:rotate-180 hidden sm:inline">›</span>
             <span className="text-slate-800 font-medium capitalize truncate">{getBreadcrumbTitle(location.pathname, i18n.t)}</span>

@@ -43,16 +43,24 @@ export const Organizations: React.FC = () => {
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchDebounced, setSearchDebounced] = useState('');
+  useEffect(() => {
+    const handle = setTimeout(() => setSearchDebounced(searchQuery.trim()), 350);
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterTier, setFilterTier] = useState('all');
   const [filterCountry, setFilterCountry] = useState('all');
 
   const [page, setPage] = useState(1);
   const limit = 50;
+  useEffect(() => {
+    setPage(1);
+  }, [filterCountry, searchDebounced]);
 
   const { data: paginatedData, isLoading: isPaginatedLoading } = useQuery({
-    queryKey: ['organizations', page, filterCountry],
-    queryFn: () => api.getTenantsPaginated(page, limit, filterCountry)
+    queryKey: ['organizations', page, filterCountry, searchDebounced],
+    queryFn: () => api.getTenantsPaginated(page, limit, filterCountry, searchDebounced)
   });
 
   const totalCount = paginatedData?.count || 0;
@@ -105,15 +113,9 @@ export const Organizations: React.FC = () => {
     
     // Tier Filter
     if (filterTier !== 'all' && org.support_tier !== filterTier) return false;
-    
-    // Search Query Filter
-    if (searchQuery.trim()) {
-      const term = searchQuery.toLowerCase();
-      if (!org.name.toLowerCase().includes(term) && !org.domain.toLowerCase().includes(term)) {
-        return false;
-      }
-    }
-    
+
+    // Search is applied server-side (customer_name, customer_code) in getTenantsPaginated.
+
     return true;
   });
 
