@@ -635,11 +635,20 @@ export const api = {
         });
 
         if (error) {
-          throw new Error(`Edge Function Error: ${error.message}`);
+          // supabase-js only gives a generic "non-2xx status code" message here;
+          // the real reason is in the function's response body, exposed via error.context.
+          let detailedMessage = error.message;
+          try {
+            const body = await error.context?.json?.();
+            if (body?.error) detailedMessage = body.error;
+          } catch {
+            // response body wasn't JSON or already consumed - fall back to generic message
+          }
+          throw new Error(detailedMessage);
         }
 
         if (data?.error) {
-          throw new Error(`Failed to invite user: ${data.error}`);
+          throw new Error(data.error);
         }
 
         const profileData = data?.profile;
@@ -1374,6 +1383,72 @@ async getTicketsPaginated(page: number = 1, limit: number = 50, customerId?: str
       }
     } catch (notifErr) {
       console.warn("Could not post system alerts / notifications", notifErr);
+    }
+
+    return data as Ticket;
+  },
+
+  // Express Ticket: a minimal, no-wizard fast path for urgent reports so
+  // banks stop bypassing the portal via phone/email/WhatsApp.
+  async createExpressTicket(params: { description: string; customerId: string; createdBy: string }): Promise<Ticket> {
+    const { description, customerId, createdBy } = params;
+
+    const [{ data: statusObj }, { data: priorityObj }, { data: productObj }] = await Promise.all([
+      supabase.from('ticket_statuses').select('id').eq('status_code', 'NEW').maybeSingle(),
+      supabase.from('priorities').select('id').eq('priority_code', 'CRITICAL').maybeSingle(),
+      supabase.from('products').select('id').eq('product_code', 'LEGACY').maybeSingle(),
+    ]);
+
+    if (!statusObj || !priorityObj || !productObj) {
+      throw new Error('Express ticket setup is incomplete (missing default status/priority/product lookup row).');
+    }
+
+    const trimmed = description.trim();
+    const subject = trimmed.length > 0
+      ? (trimmed.length > 80 ? `${trimmed.slice(0, 80)}...` : trimmed)
+      : 'Urgent report';
+
+    const payload = {
+      subject,
+      description: trimmed,
+      customer_id: customerId,
+      created_by: createdBy,
+      status_id: statusObj.id,
+      priority_id: priorityObj.id,
+      product_id: productObj.id,
+      is_express: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase.from('tickets').insert([payload]).select().single();
+    if (error) throw error;
+
+    // Notify managers/admins immediately - this is meant to replace a phone call.
+    try {
+      const { data: managers } = await supabase
+        .from('users')
+        .select('id, roles!users_role_id_fkey(role_code)')
+        .eq('is_active', true);
+
+      const managerIds = (managers || [])
+        .filter((u: any) => ['SUPPORT_MANAGER', 'ADMIN', 'ADMINISTRATOR', 'SYS_ADMIN'].includes((u.roles?.role_code || '').toUpperCase()))
+        .map((u: any) => u.id);
+
+      if (managerIds.length > 0) {
+        const ticketNo = data.ticket_no || data.id.substring(0, 8).toUpperCase();
+        await supabase.from('notifications').insert(
+          managerIds.map((profileId: string) => ({
+            profile_id: profileId,
+            content: `⚡ Express ticket ${ticketNo} was just submitted and needs urgent attention.`,
+            type: 'express_ticket',
+            is_read: false,
+            link_ticket_id: data.id,
+          }))
+        );
+      }
+    } catch (notifErr) {
+      console.warn('Could not notify managers about express ticket', notifErr);
     }
 
     return data as Ticket;

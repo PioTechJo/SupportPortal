@@ -126,7 +126,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
-    initializeAuth();
+    // Supabase's getSession()/lock handling can occasionally hang forever
+    // (stale refresh token + tab backgrounded, or a stuck navigator lock),
+    // leaving the app stuck on "Validating secure workspace session..."
+    // with no way out except a hard refresh. If init hasn't finished in a
+    // few seconds, fall back to whatever session we have cached and stop
+    // blocking the UI - the auth listener below will still correct things
+    // once/if the real session check eventually resolves.
+    const timeoutId = setTimeout(() => {
+      console.warn('Auth initialization is taking too long, falling back to cached session.');
+      const sessionUser = sessionStorage.getItem('pio_tech_session_user');
+      if (sessionUser) {
+        try {
+          setUser(JSON.parse(sessionUser));
+        } catch (e) {
+          console.error('Failed to parse cached session user:', e);
+        }
+      }
+      setLoading(false);
+    }, 8000);
+
+    initializeAuth().finally(() => clearTimeout(timeoutId));
 
     // Setup Supabase auth trigger if applicable
     let authSubscription: any;
@@ -190,6 +210,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     return () => {
+      clearTimeout(timeoutId);
       if (authSubscription) {
         authSubscription.unsubscribe();
       }

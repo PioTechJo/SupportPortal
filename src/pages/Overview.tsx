@@ -7,11 +7,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import Papa from 'papaparse';
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell 
+  Tooltip, ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
 import { useTicketsPaginated } from '../hooks/useTickets';
 import { 
-  Building, Clock, AlertTriangle, FileSpreadsheet, Filter, CheckCircle2, TrendingUp,
+  Clock, AlertTriangle, FileSpreadsheet, Filter, CheckCircle2, TrendingUp,
   Inbox, Users, ChevronDown, ChevronUp, Check, ShieldAlert, Download, List,
   Plus, Activity, ChevronRight, RotateCcw
 } from 'lucide-react';
@@ -112,6 +112,9 @@ export const Overview: React.FC = () => {
   const [selectedEscalationTeams, setSelectedEscalationTeams] = useState<string[]>([]);
   const [selectedEscalationDevelopers, setSelectedEscalationDevelopers] = useState<string[]>([]);
   const [selectedYear, setSelectedYear] = useState<string>('all');
+  const [zeroTicketSearch, setZeroTicketSearch] = useState('');
+  const [productSearch, setProductSearch] = useState('');
+  const [bankListSearch, setBankListSearch] = useState('');
 
   const yearOptions = useMemo(() => {
     const currentYear = new Date(toDate).getFullYear();
@@ -175,9 +178,17 @@ export const Overview: React.FC = () => {
 
   // --- Analytics Metrics Extraction ---
   const metrics = analyticsData?.metrics || { new_tickets: 0, reopened_tickets: 0, in_progress_tickets: 0, closed_tickets: 0 };
-  const customerChartData = analyticsData?.ticketsByBank || [];
   const customerListData = analyticsData?.ticketsByBankAll || [];
+  const bankListFilteredData = useMemo(() => {
+    return customerListData.filter((bank: any) => bank.name.toLowerCase().includes(bankListSearch.toLowerCase()));
+  }, [customerListData, bankListSearch]);
+  const zeroTicketBanks = analyticsData?.zeroTicketBanks || [];
   const productChartData = analyticsData?.ticketsByProduct || [];
+  const productFilteredData = useMemo(() => {
+    return productChartData
+      .map((entry: any, index: number) => ({ ...entry, originalIndex: index }))
+      .filter((entry: any) => entry.name.toLowerCase().includes(productSearch.toLowerCase()));
+  }, [productChartData, productSearch]);
   const agentPerformance = analyticsData?.engineerPerformance || [];
 
   type EngineerSortColumn = 'name' | 'assigned' | 'resolved' | 'avgTime';
@@ -261,6 +272,22 @@ export const Overview: React.FC = () => {
 
   const handleExportCSV = () => {
      alert("CSV Export requires detailed ticket data which is no longer loaded on the dashboard. This feature will be moved to the Tickets List page.");
+  };
+
+  const handleExportZeroTicketBanks = () => {
+    const rows = zeroTicketBanks
+      .filter((bank: any) => bank.name.toLowerCase().includes(zeroTicketSearch.toLowerCase()))
+      .map((bank: any) => ({ Bank: bank.name, Country: bank.country || '' }));
+    const csv = Papa.unparse(rows);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `banks-with-zero-tickets-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -396,37 +423,52 @@ export const Overview: React.FC = () => {
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-        {/* By Bank - Chart */}
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs flex flex-col">
-          <div className="border-b border-slate-100 pb-3 mb-4 text-start">
-            <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm"><Building size={16} className="text-slate-500" /> {t('overview.ticketsByBank')} <span className="text-slate-400 font-normal">(Top 10)</span></h3>
-            <p className="text-xs text-slate-500 mt-1">{t('overview.ticketsByBankDesc')}</p>
+        {/* Banks with zero tickets */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-xs flex flex-col overflow-hidden">
+          <div className="border-b border-slate-100 p-6 pb-3 text-start">
+            <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm">
+              <AlertTriangle size={16} className="text-amber-500" /> Banks with 0 tickets
+            </h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Never opened a ticket this period ({zeroTicketBanks.length} banks).
+            </p>
+            <div className="flex items-center gap-2 mt-3">
+              <input
+                type="text"
+                placeholder="Filter by bank name..."
+                value={zeroTicketSearch}
+                onChange={(e) => setZeroTicketSearch(e.target.value)}
+                className="flex-1 pl-3 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <button
+                onClick={handleExportZeroTicketBanks}
+                disabled={zeroTicketBanks.length === 0}
+                title="Export to Excel"
+                className="flex items-center justify-center gap-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white p-1.5 rounded-lg shrink-0 transition"
+              >
+                <FileSpreadsheet size={14} />
+              </button>
+            </div>
           </div>
-          <div className="h-72 w-full">
-            {customerChartData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-xs text-slate-400 italic">{t('overview.noBankData')}</div>
+          <div className="h-72 overflow-y-auto">
+            {zeroTicketBanks.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-xs text-slate-400 italic px-4 text-center">
+                Every bank has opened at least one ticket in this period. 🎉
+              </div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={customerChartData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="#64748b" />
-                  <YAxis tick={{ fontSize: 11 }} stroke="#64748b" />
-                  <Tooltip wrapperStyle={{ fontSize: 12, borderRadius: '8px' }} cursor={{ fill: '#f1f5f9' }} />
-                  <Bar
-                    dataKey="count"
-                    fill="#3b82f6"
-                    radius={[4, 4, 0, 0]}
-                    barSize={32}
-                    onClick={(data) => {
-                      if (data && data.name) {
-                        navigate(`/tickets?customerId=${encodeURIComponent(data.id || 'none')}&customer=${encodeURIComponent(data.name)}`);
-                      }
-                    }}
-                    cursor="pointer"
-                    className="hover:opacity-80 transition-opacity"
-                  />
-                </BarChart>
-              </ResponsiveContainer>
+              <table className="w-full text-xs text-slate-700">
+                <tbody className="divide-y divide-slate-100">
+                  {zeroTicketBanks
+                    .filter((bank: any) => bank.name.toLowerCase().includes(zeroTicketSearch.toLowerCase()))
+                    .map((bank: any, idx: number) => (
+                      <tr key={bank.id} className="hover:bg-amber-50/40 transition">
+                        <td className="py-2 px-6 text-slate-400 w-6">{idx + 1}</td>
+                        <td className="py-2 px-2 font-medium text-slate-900 truncate">{bank.name}</td>
+                        <td className="py-2 px-6 text-slate-500 text-end">{bank.country || '—'}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
             )}
           </div>
         </div>
@@ -436,14 +478,23 @@ export const Overview: React.FC = () => {
           <div className="border-b border-slate-100 p-6 pb-3 text-start">
             <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm"><List size={16} className="text-slate-500" /> {t('overview.ticketsByBank')} — All Banks</h3>
             <p className="text-xs text-slate-500 mt-1">Full breakdown for the selected period ({customerListData.length} banks)</p>
+            <input
+              type="text"
+              placeholder="Search banks..."
+              value={bankListSearch}
+              onChange={(e) => setBankListSearch(e.target.value)}
+              className="mt-3 pl-3 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
           </div>
           <div className="h-72 overflow-y-auto">
             {customerListData.length === 0 ? (
               <div className="h-full flex items-center justify-center text-xs text-slate-400 italic">{t('overview.noBankData')}</div>
+            ) : bankListFilteredData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-xs text-slate-400 italic">No banks match "{bankListSearch}".</div>
             ) : (
               <table className="w-full text-xs text-slate-700">
                 <tbody className="divide-y divide-slate-100">
-                  {customerListData.map((bank: any, idx: number) => (
+                  {bankListFilteredData.map((bank: any, idx: number) => (
                     <tr
                       key={bank.name}
                       onClick={() => navigate(`/tickets?customerId=${encodeURIComponent(bank.id || 'none')}&customer=${encodeURIComponent(bank.name)}`)}
@@ -462,29 +513,38 @@ export const Overview: React.FC = () => {
 
         {/* By Product */}
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs flex flex-col">
-          <div className="border-b border-slate-100 pb-3 mb-4 text-start">
+          <div className="border-b border-slate-100 pb-3 mb-3 text-start">
             <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm"><Inbox size={16} className="text-slate-500" /> {t('overview.ticketsByProduct')}</h3>
             <p className="text-xs text-slate-500 mt-1">{t('overview.ticketsByProductDesc')}</p>
           </div>
-          <div className="h-72 w-full flex flex-col sm:flex-row justify-center items-center gap-4">
+          <input
+            type="text"
+            placeholder="Search products..."
+            value={productSearch}
+            onChange={(e) => setProductSearch(e.target.value)}
+            className="mb-3 pl-3 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <div className="h-64 w-full flex flex-col sm:flex-row justify-center items-center gap-4">
             {productChartData.length === 0 ? (
               <div className="flex items-center justify-center text-xs text-slate-400 italic">{t('overview.noProductData')}</div>
+            ) : productFilteredData.length === 0 ? (
+              <div className="flex items-center justify-center text-xs text-slate-400 italic">No products match "{productSearch}".</div>
             ) : (
               <>
                 <div className="h-48 w-48 shrink-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={productChartData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={3} dataKey="value">
-                        {productChartData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                      <Pie data={productFilteredData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={3} dataKey="value">
+                        {productFilteredData.map((entry: any, index: number) => <Cell key={`cell-${index}`} fill={COLORS[entry.originalIndex % COLORS.length]} />)}
                       </Pie>
                       <Tooltip />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
                 <div className="flex-1 space-y-2 max-h-48 overflow-y-auto w-full text-start">
-                  {productChartData.map((entry, index) => (
+                  {productFilteredData.map((entry: any) => (
                     <div key={entry.name} className="flex items-start gap-2 text-xs">
-                      <span className="w-3 h-3 rounded mt-[2px] shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
+                      <span className="w-3 h-3 rounded mt-[2px] shrink-0" style={{ backgroundColor: COLORS[entry.originalIndex % COLORS.length] }} />
                       <span className="font-medium text-slate-700 truncate flex-1">{entry.name}</span>
                       <span className="font-semibold text-slate-500">{entry.value}</span>
                     </div>
@@ -495,8 +555,6 @@ export const Overview: React.FC = () => {
           </div>
         </div>
       </div>
-
-
 
       {/* Engineer Performance Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">

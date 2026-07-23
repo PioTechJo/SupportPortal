@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Tenant } from '../../types';
-import { Ticket, Clock, ShieldCheck, Users as UsersIcon, AlertTriangle } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { Ticket, Clock, ShieldCheck, Users as UsersIcon, AlertTriangle, Zap } from 'lucide-react';
 
 interface OrganizationOverviewTabProps {
   organization: Tenant;
@@ -9,6 +10,9 @@ interface OrganizationOverviewTabProps {
 }
 
 export const OrganizationOverviewTab: React.FC<OrganizationOverviewTabProps> = ({ organization, totalUsers }) => {
+  const { user } = useAuth();
+  const isAdmin = ['ADMIN', 'ADMINISTRATOR', 'SYS_ADMIN', 'CEO', 'SUPPORT_MANAGER'].includes((user?.role_code || '').toUpperCase());
+
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalTickets: 0,
@@ -17,6 +21,8 @@ export const OrganizationOverviewTab: React.FC<OrganizationOverviewTabProps> = (
     activeContracts: 0,
     missingOrExpiredContracts: 0
   });
+  const [expressEnabled, setExpressEnabled] = useState(true);
+  const [updatingExpress, setUpdatingExpress] = useState(false);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -98,7 +104,34 @@ export const OrganizationOverviewTab: React.FC<OrganizationOverviewTabProps> = (
     };
 
     fetchStats();
+
+    supabase
+      .from('customers')
+      .select('express_enabled')
+      .eq('id', organization.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) setExpressEnabled(data.express_enabled !== false);
+      });
   }, [organization.id]);
+
+  const handleToggleExpress = async () => {
+    const next = !expressEnabled;
+    setUpdatingExpress(true);
+    try {
+      const { error } = await supabase
+        .from('customers')
+        .update({ express_enabled: next })
+        .eq('id', organization.id);
+      if (error) throw error;
+      setExpressEnabled(next);
+    } catch (err) {
+      console.error('Failed to update express_enabled:', err);
+      alert('Failed to update Express Ticket access.');
+    } finally {
+      setUpdatingExpress(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -163,6 +196,31 @@ export const OrganizationOverviewTab: React.FC<OrganizationOverviewTabProps> = (
           </div>
         ))}
       </div>
+
+      {isAdmin && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className={`p-3 rounded-xl ${expressEnabled ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-400'}`}>
+              <Zap size={22} />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-800">Express Ticket Access</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {expressEnabled
+                  ? 'This organization can use the urgent "Report Urgent Issue" fast-path.'
+                  : 'Express Ticket is disabled for this organization (e.g. due to misuse).'}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleToggleExpress}
+            disabled={updatingExpress}
+            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${expressEnabled ? 'bg-red-600' : 'bg-slate-300'}`}
+          >
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${expressEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

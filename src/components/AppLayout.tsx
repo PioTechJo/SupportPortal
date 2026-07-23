@@ -29,6 +29,7 @@ import {
   Mail
 } from 'lucide-react';
 import logoWhite from '../assets/pio-tech-logo-white.png';
+import { ExpressTicketButton } from './ExpressTicketButton';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -544,6 +545,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         </main>
 
       </div>
+
+      <ExpressTicketButton />
     </div>
   );
 };

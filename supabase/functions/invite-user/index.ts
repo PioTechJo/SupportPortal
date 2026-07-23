@@ -93,18 +93,19 @@ Deno.serve(async (req) => {
     }
 
     if (authError || !authData?.user) {
+      const rawMessage = authError?.message || 'Unknown error creating the account.'
+      const isDuplicate = /already.*registered|already.*exists/i.test(rawMessage)
+      const friendlyMessage = isDuplicate
+        ? `An account with the email "${email}" already exists. Use a different email, or ask an admin to check the existing account.`
+        : `Could not create the account: ${rawMessage}`
+
       return new Response(
-        JSON.stringify(
-          {
-            success: false,
-            authError,
-            authData
-          },
-          null,
-          2
-        ),
+        JSON.stringify({
+          success: false,
+          error: friendlyMessage
+        }),
         {
-          status: 500,
+          status: isDuplicate ? 409 : 500,
           headers: {
             ...corsHeaders,
             "Content-Type": "application/json"

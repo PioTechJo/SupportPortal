@@ -797,7 +797,7 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
                   sortedTickets.map(ticket => (
                     <tr 
                       key={ticket.id} 
-                      onDoubleClick={() => {
+                      onClick={() => {
                         if (onTicketSelect) {
                           onTicketSelect(ticket.id);
                         } else {
@@ -805,7 +805,7 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
                         }
                       }}
                       className="hover:bg-slate-50/50 transition-colors cursor-pointer group"
-                      title="Double-click to open ticket"
+                      title="Click to open ticket"
                     >
                       {viewFilter === 'pending_approval' && (
                         <td className={`px-4 ${cellPadding} text-center`} onClick={(e) => e.stopPropagation()}>
@@ -824,7 +824,14 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
                         </td>
                       )}
                       <td className={`px-6 ${cellPadding}`}>
-                        <div className="text-sm font-semibold text-slate-900 group-hover:text-[#3B82F6] transition-colors line-clamp-1">{ticket.title}</div>
+                        <div className="flex items-center gap-1.5">
+                          {(ticket as any).is_express && (
+                            <span className="inline-flex items-center gap-0.5 shrink-0 bg-red-50 text-red-600 border border-red-200 rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide" title="Submitted via Express Ticket">
+                              ⚡ Express
+                            </span>
+                          )}
+                          <div className="text-sm font-semibold text-slate-900 group-hover:text-[#3B82F6] transition-colors line-clamp-1">{ticket.title}</div>
+                        </div>
                         <div className="text-xs text-slate-500 mt-1 line-clamp-1">
                           {ticket.product_name} • {
                             (i18n.language === 'ar' && ticket.diagnostic_category?.category_name_ar)

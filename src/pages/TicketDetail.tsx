@@ -25,6 +25,8 @@ import {
   Lock,
   Code,
   XCircle,
+  Video,
+  ExternalLink,
 } from "lucide-react";
 
 import { Ticket } from "../types";
@@ -96,6 +98,12 @@ export const TicketDetail: React.FC = () => {
   const [approving, setApproving] = useState(false);
   const [closing, setClosing] = useState(false);
   const [rejecting, setRejecting] = useState(false);
+
+  const [remoteSessions, setRemoteSessions] = useState<any[]>([]);
+  const [showRemoteModal, setShowRemoteModal] = useState(false);
+  const [remoteMeetingUrl, setRemoteMeetingUrl] = useState("");
+  const [remoteMessage, setRemoteMessage] = useState("");
+  const [requestingRemote, setRequestingRemote] = useState(false);
 
   const isAdmin = ["ADMIN", "ADMINISTRATOR", "CEO", "SUPPORT_MANAGER", "SYS_ADMIN"].includes(
     user?.role_code?.toUpperCase() || user?.role_name?.toUpperCase() || "",
@@ -226,71 +234,89 @@ export const TicketDetail: React.FC = () => {
 
         if (tError) throw tError;
 
-        let assignedEngineerName = null;
-        if (tData.assigned_to) {
-          const { data: engData } = await supabase
-            .from("users")
-            .select("full_name")
-            .eq("id", tData.assigned_to)
-            .single();
-          if (engData) assignedEngineerName = engData.full_name;
-        }
-
-        setTicket({ ...tData, assignedEngineerName });
-
-        const { data: pData } = await supabase.from("priorities").select("*");
-        if (pData) setPrioritiesList(pData);
-
-        // Fetch Answers
-        const { data: aData } = await supabase
-          .from("ticket_answers")
-          .select(
-            `
-            answer_value,
-            question:ai_diagnostic_questions(
-              question_text,
-              question_text_ar,
-              ai_question_options(option_value, option_label, option_label_ar)
+        // Everything below only depends on the ticket's id/assigned_to, not on
+        // each other - fire them all at once instead of one-by-one so the
+        // page doesn't pay for N sequential round trips.
+        const [
+          engineerRes,
+          answersRes,
+          recommendationRes,
+          commentsRes,
+          attachmentsRes,
+          remoteRes,
+        ] = await Promise.all([
+          tData.assigned_to
+            ? supabase.from("users").select("full_name").eq("id", tData.assigned_to).single()
+            : Promise.resolve({ data: null } as any),
+          supabase
+            .from("ticket_answers")
+            .select(
+              `
+              answer_value,
+              question:ai_diagnostic_questions(
+                question_text,
+                question_text_ar,
+                ai_question_options(option_value, option_label, option_label_ar)
+              )
+            `,
             )
-          `,
-          )
-          .eq("ticket_id", id);
-        setAnswers(aData || []);
+            .eq("ticket_id", id),
+          supabase
+            .from("ai_recommendations")
+            .select("recommendation_text, confidence_score")
+            .eq("ticket_id", id)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          supabase
+            .from("ticket_comments")
+            .select(
+              "id, comment_text, is_system_generated, created_at, author_id, is_internal, escalated_team_id, escalated_developer_name, teams(team_name)",
+            )
+            .eq("ticket_id", id)
+            .order("created_at", { ascending: true }),
+          supabase
+            .from("ticket_attachments")
+            .select("id, file_name, file_path, uploaded_at, uploaded_by, is_internal, description")
+            .eq("ticket_id", id)
+            .order("uploaded_at", { ascending: true }),
+          supabase
+            .from("ticket_remote_sessions")
+            .select("id, meeting_url, message, status, created_at, requested_by")
+            .eq("ticket_id", id)
+            .order("created_at", { ascending: false }),
+        ]);
 
-        // Fetch {t("ticketDetail.aiRecommendation")}s
-        const { data: recommendationData } = await supabase
-          .from("ai_recommendations")
-          .select("recommendation_text, confidence_score")
-          .eq("ticket_id", id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        setRecommendationData(recommendationData);
+        setTicket({ ...tData, assignedEngineerName: engineerRes.data?.full_name || null });
+        setAnswers(answersRes.data || []);
+        setRecommendationData(recommendationRes.data);
+        setRemoteSessions(remoteRes.data || []);
 
-        // Fetch Comments
-        const { data: commentsData } = await supabase
-          .from("ticket_comments")
-          .select(
-            "id, comment_text, is_system_generated, created_at, author_id, is_internal, escalated_team_id, escalated_developer_name, teams(team_name)",
-          )
-          .eq("ticket_id", id)
-          .order("created_at", { ascending: true });
+        const commentsData = commentsRes.data;
+        const attData = attachmentsRes.data;
+
+        // The two author/uploader name lookups are independent of each
+        // other too, so run them side by side rather than one after another.
+        const commentAuthorIds = [
+          ...new Set((commentsData || []).filter((c) => c.author_id).map((c) => c.author_id)),
+        ];
+        const uploaderIds = [
+          ...new Set((attData || []).filter((a) => a.uploaded_by).map((a) => a.uploaded_by)),
+        ];
+
+        const [commentAuthorsRes, uploadersRes] = await Promise.all([
+          commentAuthorIds.length
+            ? supabase.from("users").select("id, full_name").in("id", commentAuthorIds)
+            : Promise.resolve({ data: [] } as any),
+          uploaderIds.length
+            ? supabase.from("users").select("id, full_name").in("id", uploaderIds)
+            : Promise.resolve({ data: [] } as any),
+        ]);
 
         let finalComments: any[] = [];
         if (commentsData && commentsData.length > 0) {
-          const authorIds = [
-            ...new Set(
-              commentsData.filter((c) => c.author_id).map((c) => c.author_id),
-            ),
-          ];
-
-          const { data: usersData } = await supabase
-            .from("users")
-            .select("id, full_name")
-            .in("id", authorIds);
-
           const usersMap = Object.fromEntries(
-            (usersData || []).map((u) => [u.id, u.full_name]),
+            (commentAuthorsRes.data || []).map((u: any) => [u.id, u.full_name]),
           );
 
           finalComments = commentsData.map((c) => ({
@@ -351,32 +377,14 @@ export const TicketDetail: React.FC = () => {
 
         setComments(finalComments);
 
-        // Fetch Attachments
-        const { data: attData } = await supabase
-          .from("ticket_attachments")
-          .select("id, file_name, file_path, uploaded_at, uploaded_by, is_internal, description")
-          .eq("ticket_id", id)
-          .order("uploaded_at", { ascending: true });
-
         if (attData && attData.length > 0) {
-          const uploaderIds = [
-            ...new Set(
-              attData.filter((a) => a.uploaded_by).map((a) => a.uploaded_by),
-            ),
-          ];
-          const { data: uploadersData } = await supabase
-            .from("users")
-            .select("id, full_name")
-            .in("id", uploaderIds);
           const uploadersMap = Object.fromEntries(
-            (uploadersData || []).map((u) => [u.id, u.full_name]),
+            (uploadersRes.data || []).map((u: any) => [u.id, u.full_name]),
           );
-
-          const attachmentsWithUploaders = attData.map((a) => ({
+          setAttachments(attData.map((a) => ({
             ...a,
             uploader_name: uploadersMap[a.uploaded_by] || "Unknown",
-          }));
-          setAttachments(attachmentsWithUploaders);
+          })));
         } else {
           setAttachments([]);
         }
@@ -590,6 +598,64 @@ export const TicketDetail: React.FC = () => {
       alert("Failed to save internal note.");
     } finally {
       setSavingEscalation(false);
+    }
+  };
+
+  const handleRequestRemoteCheck = async () => {
+    if (!remoteMeetingUrl.trim() || !user || !id || !ticket) {
+      alert("A meeting link is required.");
+      return;
+    }
+    let normalizedUrl = remoteMeetingUrl.trim();
+    if (!/^https?:\/\//i.test(normalizedUrl)) {
+      normalizedUrl = `https://${normalizedUrl}`;
+    }
+
+    setRequestingRemote(true);
+    try {
+      const { data, error } = await supabase
+        .from("ticket_remote_sessions")
+        .insert({
+          ticket_id: id,
+          requested_by: user.id,
+          meeting_url: normalizedUrl,
+          message: remoteMessage.trim() || null,
+        })
+        .select("id, meeting_url, message, status, created_at, requested_by")
+        .single();
+
+      if (error) throw error;
+
+      setRemoteSessions([data, ...remoteSessions]);
+      setShowRemoteModal(false);
+      setRemoteMeetingUrl("");
+      setRemoteMessage("");
+
+      // Notify the bank's users about the remote check request
+      const { data: bankUsers } = await supabase
+        .from("users")
+        .select("id")
+        .eq("customer_id", ticket.customer_id);
+
+      if (bankUsers && bankUsers.length > 0) {
+        const ticketNo = ticket.ticket_no || ticket.id.substring(0, 8).toUpperCase();
+        const notificationsPayload = bankUsers.map((bu) => ({
+          profile_id: bu.id,
+          content: `A remote check-in has been requested for ticket ${ticketNo}. Join here: ${normalizedUrl}`,
+          type: "remote_session_requested",
+          is_read: false,
+          link_ticket_id: id,
+        }));
+        const { error: notifError } = await supabase.from("notifications").insert(notificationsPayload);
+        if (notifError) {
+          console.error("Failed to notify bank users about remote session:", notifError);
+        }
+      }
+    } catch (err) {
+      console.error("Error requesting remote session:", err);
+      alert("Failed to send the remote check request.");
+    } finally {
+      setRequestingRemote(false);
     }
   };
 
@@ -1386,6 +1452,18 @@ export const TicketDetail: React.FC = () => {
                 <Lock size={16} />{t("ticketDetail.internalNote")}</button>
             )}
 
+          {(isAdmin || ticket?.assigned_to === user?.id) &&
+            !["RESOLVED_PENDING_APPROVAL", "APPROVED", "CLOSED"].includes(
+              (ticket.status?.status_code || ticket.status_code || "").toUpperCase()
+            ) && (
+              <button
+                onClick={() => setShowRemoteModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-sm font-medium transition-colors shadow-sm"
+              >
+                <Video size={16} className="text-blue-600" />Request Remote Check
+              </button>
+            )}
+
           {ticket?.assigned_to === user?.id &&
             !["RESOLVED_PENDING_APPROVAL", "APPROVED", "CLOSED"].includes(
               (ticket.status?.status_code || ticket.status_code || "").toUpperCase()
@@ -2030,6 +2108,48 @@ export const TicketDetail: React.FC = () => {
             </div>
           </div>
 
+          {/* Remote Check Requests */}
+          {remoteSessions.length > 0 && (
+            <div className="bg-white rounded-[10px] border border-slate-200 p-6 shadow-sm">
+              <h3 className="text-xs font-bold text-slate-400 mb-4 uppercase tracking-wider flex items-center gap-2">
+                <Video size={14} />Remote Check Requests
+              </h3>
+              <div className="space-y-3">
+                {remoteSessions.map((rs) => (
+                  <div key={rs.id} className="border border-slate-100 rounded-lg p-3 bg-slate-50/50">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span
+                        className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border ${
+                          rs.status === "completed"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : rs.status === "cancelled"
+                            ? "bg-slate-100 text-slate-500 border-slate-200"
+                            : "bg-amber-50 text-amber-700 border-amber-200"
+                        }`}
+                      >
+                        {rs.status}
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        {new Date(rs.created_at).toLocaleString()}
+                      </span>
+                    </div>
+                    {rs.message && (
+                      <p className="text-xs text-slate-600 mb-2">{rs.message}</p>
+                    )}
+                    <a
+                      href={rs.meeting_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700"
+                    >
+                      Join Meeting <ExternalLink size={12} />
+                    </a>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Timeline Card */}
           <div className="bg-white rounded-[10px] border border-slate-200 p-6 shadow-sm">
             <h3 className="text-xs font-bold text-slate-400 mb-6 uppercase tracking-wider flex items-center gap-2">
@@ -2182,6 +2302,86 @@ export const TicketDetail: React.FC = () => {
                   <>
                     <CheckCircle2 size={16} />
                     {t("ticketDetail.submitForApproval")}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Request Remote Check Modal */}
+      {showRemoteModal && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-[10px] w-full max-w-lg shadow-xl overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Video size={20} className="text-blue-600" />Request Remote Check
+              </h2>
+              <button
+                onClick={() => setShowRemoteModal(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <div className="bg-blue-50 text-blue-800 text-sm p-3 rounded-lg border border-blue-100 flex items-start gap-2">
+                <Video size={16} className="mt-0.5 shrink-0" />
+                <p>
+                  Share a meeting link (Zoom, Teams, Google Meet...). The bank will be notified
+                  and can join it directly from their ticket.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                  Meeting URL <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={remoteMeetingUrl}
+                  onChange={(e) => setRemoteMeetingUrl(e.target.value)}
+                  placeholder="https://meet.google.com/xxx-xxxx-xxx"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                  Message to bank <span className="text-slate-400 font-normal">{t("ticketDetail.optional")}</span>
+                </label>
+                <textarea
+                  value={remoteMessage}
+                  onChange={(e) => setRemoteMessage(e.target.value)}
+                  placeholder="e.g. Please join at 3pm so we can check the AML module remotely."
+                  className="w-full h-24 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-2">
+              <button
+                onClick={() => setShowRemoteModal(false)}
+                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors"
+              >
+                {t("ticketDetail.cancel")}
+              </button>
+              <button
+                onClick={handleRequestRemoteCheck}
+                disabled={requestingRemote || !remoteMeetingUrl.trim()}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {requestingRemote ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Video size={16} />
+                    Send Request
                   </>
                 )}
               </button>

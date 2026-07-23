@@ -78,6 +78,8 @@ export interface Ticket {
   customer_id?: string;
   product_id?: string;
   ticket_statuses?: any;
+  ticket_no?: string;
+  is_express?: boolean;
 }
 
 export interface Comment {
