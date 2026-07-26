@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { useTenant } from '../context/TenantContext';
 import { useAuth } from '../context/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
@@ -115,6 +116,8 @@ export const Overview: React.FC = () => {
   const [zeroTicketSearch, setZeroTicketSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [bankListSearch, setBankListSearch] = useState('');
+  const [contractSearch, setContractSearch] = useState('');
+  const [contractStatusFilter, setContractStatusFilter] = useState<'all' | 'active' | 'upcoming' | 'expired'>('all');
 
   const yearOptions = useMemo(() => {
     const currentYear = new Date(toDate).getFullYear();
@@ -145,6 +148,45 @@ export const Overview: React.FC = () => {
   if (analyticsError) {
     console.error('[Overview] RPC get_dashboard_analytics failed:', analyticsError);
   }
+
+  // Fetch Maintenance Contracts (all banks)
+  const { data: contractsData, isLoading: contractsLoading } = useQuery({
+    queryKey: ['maintenanceContractsOverview'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('maintenance_contracts')
+        .select('id, project_code, fiscal_year, start_date, end_date, customer:customers(id, name), product:products(product_name)')
+        .order('end_date', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: isAdmin,
+    retry: false,
+  });
+
+  const getContractStatus = (start: string, end: string) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    if (today < startDate) return { key: 'upcoming', label: 'Upcoming', color: 'bg-slate-100 text-slate-700 border-slate-200' };
+    if (today > endDate) return { key: 'expired', label: 'Expired', color: 'bg-red-100 text-red-700 border-red-200' };
+    return { key: 'active', label: 'Active', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+  };
+
+  const filteredContracts = useMemo(() => {
+    const list = contractsData || [];
+    const q = contractSearch.trim().toLowerCase();
+    return list.filter((c: any) => {
+      const status = getContractStatus(c.start_date, c.end_date);
+      if (contractStatusFilter !== 'all' && status.key !== contractStatusFilter) return false;
+      if (!q) return true;
+      const bankName = (c.customer?.name || '').toLowerCase();
+      const projectCode = (c.project_code || '').toLowerCase();
+      const productName = (c.product?.product_name || '').toLowerCase();
+      return bankName.includes(q) || projectCode.includes(q) || productName.includes(q);
+    });
+  }, [contractsData, contractSearch, contractStatusFilter]);
 
   const isLoading = analyticsLoading;
 
@@ -555,6 +597,77 @@ export const Overview: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Maintenance Contracts */}
+      {isAdmin && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+          <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3 text-start">
+            <div>
+              <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm"><FileSpreadsheet size={16} className="text-slate-500" /> Maintenance Contracts</h3>
+              <p className="text-xs text-slate-500 mt-1">Project code, start/end dates for all banks ({filteredContracts.length} contracts)</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={contractStatusFilter}
+                onChange={(e) => setContractStatusFilter(e.target.value as any)}
+                className="bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="all">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="upcoming">Upcoming</option>
+                <option value="expired">Expired</option>
+              </select>
+              <input
+                type="text"
+                placeholder="Search bank, project code, product..."
+                value={contractSearch}
+                onChange={(e) => setContractSearch(e.target.value)}
+                className="pl-3 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs w-64 max-w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <div className="overflow-x-auto max-h-96 overflow-y-auto">
+            <table className="w-full min-w-[700px] border-collapse text-start text-xs text-slate-700">
+              <thead className="sticky top-0 z-10">
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
+                  <th className="py-3 px-6">Bank</th>
+                  <th className="py-3 px-6">Product</th>
+                  <th className="py-3 px-6">Project Code</th>
+                  <th className="py-3 px-6">Start Date</th>
+                  <th className="py-3 px-6">End Date</th>
+                  <th className="py-3 px-6">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {contractsLoading ? (
+                  <tr><td colSpan={6} className="py-8 text-center text-slate-400 italic">Loading contracts...</td></tr>
+                ) : filteredContracts.length === 0 ? (
+                  <tr><td colSpan={6} className="py-8 text-center text-slate-400 italic">No contracts match your filters.</td></tr>
+                ) : (
+                  filteredContracts.map((c: any) => {
+                    const status = getContractStatus(c.start_date, c.end_date);
+                    return (
+                      <tr
+                        key={c.id}
+                        className="hover:bg-slate-50 transition"
+                      >
+                        <td className="py-3 px-6 font-semibold text-slate-900">{c.customer?.name || 'Unknown'}</td>
+                        <td className="py-3 px-6 text-slate-600">{c.product?.product_name || '—'}</td>
+                        <td className="py-3 px-6 text-slate-600">{c.project_code || <span className="text-slate-300 italic">—</span>}</td>
+                        <td className="py-3 px-6 text-slate-600">{new Date(c.start_date).toLocaleDateString()}</td>
+                        <td className="py-3 px-6 text-slate-600">{new Date(c.end_date).toLocaleDateString()}</td>
+                        <td className="py-3 px-6">
+                          <span className={`px-2 py-0.5 text-[10px] font-bold rounded border ${status.color}`}>{status.label}</span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Engineer Performance Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
