@@ -60,6 +60,7 @@ const getBreadcrumbTitle = (pathname: string, t: any) => {
     'admin/emails': 'emailLogs',
     'admin/email-templates': 'emailTemplates',
     'admin/daily-report': 'dailyReportConfig',
+    'admin/auto-comment': 'autoCommentConfig',
     'admin': 'banksManagement'
   };
   const key = pathKeyMap[path];
@@ -230,6 +231,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     { name: 'emailLogs', path: '/admin/emails', icon: Mail },
     { name: 'emailTemplates', path: '/admin/email-templates', icon: Mail },
     { name: 'dailyReportConfig', path: '/admin/daily-report', icon: Clock },
+    { name: 'autoCommentConfig', path: '/admin/auto-comment', icon: Mail },
     { name: 'banksManagement', path: '/admin', icon: Settings },
     { name: 'users', path: '/users', icon: Users },
   ];

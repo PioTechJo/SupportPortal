@@ -24,6 +24,7 @@ import { SLAConfiguration } from './pages/admin/SLAConfiguration';
 import { EmailLogs } from './pages/admin/EmailLogs';
 import { EmailTemplates } from './pages/admin/EmailTemplates';
 import { DailyReportConfig } from './pages/admin/DailyReportConfig';
+import { AutoCommentConfig } from './pages/admin/AutoCommentConfig';
 import { DataAssistant } from './pages/admin/DataAssistant';
 
 // Create a React Query client
@@ -278,6 +279,12 @@ export default function App() {
               <Route path="/admin/daily-report" element={
                 <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER']}>
                   <DailyReportConfig />
+                </ProtectedRoute>
+              } />
+
+              <Route path="/admin/auto-comment" element={
+                <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER']}>
+                  <AutoCommentConfig />
                 </ProtectedRoute>
               } />
 

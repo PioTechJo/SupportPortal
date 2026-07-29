@@ -10,16 +10,10 @@ entrypoint = "./functions/process-ticket/index.ts"
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/process-ticket/*.html" ]
 
-[functions.auto-comment-tickets]
+[functions.daily-ticket-update]
 enabled = true
 verify_jwt = false
-import_map = "./functions/auto-comment-tickets/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
-entrypoint = "./functions/auto-comment-tickets/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/auto-comment-tickets/*.html" ]
+entrypoint = "./functions/daily-ticket-update/index.ts"
 
 [functions.daily-report]
 enabled = true

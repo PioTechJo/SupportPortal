@@ -982,10 +982,10 @@ export const api = {
           
           let frontendStatus = 'open';
           if (sCode === 'NEW') frontendStatus = 'open';
-          else if (sCode === 'ASSIGNED' || sCode === 'INVESTIGATION' || sCode === 'DEVELOPMENT_ACTION' || sCode === 'PENDING_CUSTOMER') frontendStatus = 'in_progress';
-          else if (sCode === 'RESOLVED') frontendStatus = 'resolved';
+          else if (sCode === 'ASSIGNED' || sCode === 'INVESTIGATION' || sCode === 'DEVELOPMENT_ACTION' || sCode === 'PENDING_CUSTOMER' || sCode === 'REOPENED') frontendStatus = 'in_progress';
+          else if (sCode === 'RESOLVED' || sCode === 'APPROVED') frontendStatus = 'resolved';
           else if (sCode === 'CLOSED') frontendStatus = 'closed';
-          else if (sCode === 'PENDING_APPROVAL') frontendStatus = 'pending_approval';
+          else if (sCode === 'RESOLVED_PENDING_APPROVAL') frontendStatus = 'pending_approval';
           else frontendStatus = ticket.status || 'open';
 
           if (sCode === 'INVESTIGATION' && ticket.resolution_draft) {
@@ -1130,10 +1130,10 @@ async getTicketsPaginated(page: number = 1, limit: number = 50, customerId?: str
           
           let frontendStatus = 'open';
           if (sCode === 'NEW') frontendStatus = 'open';
-          else if (sCode === 'ASSIGNED' || sCode === 'INVESTIGATION' || sCode === 'DEVELOPMENT_ACTION' || sCode === 'PENDING_CUSTOMER') frontendStatus = 'in_progress';
-          else if (sCode === 'RESOLVED') frontendStatus = 'resolved';
+          else if (sCode === 'ASSIGNED' || sCode === 'INVESTIGATION' || sCode === 'DEVELOPMENT_ACTION' || sCode === 'PENDING_CUSTOMER' || sCode === 'REOPENED') frontendStatus = 'in_progress';
+          else if (sCode === 'RESOLVED' || sCode === 'APPROVED') frontendStatus = 'resolved';
           else if (sCode === 'CLOSED') frontendStatus = 'closed';
-          else if (sCode === 'PENDING_APPROVAL') frontendStatus = 'pending_approval';
+          else if (sCode === 'RESOLVED_PENDING_APPROVAL') frontendStatus = 'pending_approval';
           else frontendStatus = ticket.status || 'open';
 
           if (sCode === 'INVESTIGATION' && ticket.resolution_draft) {
@@ -1215,10 +1215,10 @@ async getTicketsPaginated(page: number = 1, limit: number = 50, customerId?: str
         
         let frontendStatus = 'open';
         if (sCode === 'NEW') frontendStatus = 'open';
-        else if (sCode === 'ASSIGNED' || sCode === 'INVESTIGATION' || sCode === 'DEVELOPMENT_ACTION' || sCode === 'PENDING_CUSTOMER') frontendStatus = 'in_progress';
-        else if (sCode === 'RESOLVED') frontendStatus = 'resolved';
+        else if (sCode === 'ASSIGNED' || sCode === 'INVESTIGATION' || sCode === 'DEVELOPMENT_ACTION' || sCode === 'PENDING_CUSTOMER' || sCode === 'REOPENED') frontendStatus = 'in_progress';
+        else if (sCode === 'RESOLVED' || sCode === 'APPROVED') frontendStatus = 'resolved';
         else if (sCode === 'CLOSED') frontendStatus = 'closed';
-        else if (sCode === 'PENDING_APPROVAL') frontendStatus = 'pending_approval';
+        else if (sCode === 'RESOLVED_PENDING_APPROVAL') frontendStatus = 'pending_approval';
         else frontendStatus = ticket.status || 'open';
 
         if (sCode === 'INVESTIGATION' && ticket.resolution_draft) {

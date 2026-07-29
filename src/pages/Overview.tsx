@@ -155,7 +155,7 @@ export const Overview: React.FC = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('maintenance_contracts')
-        .select('id, project_code, fiscal_year, start_date, end_date, customer:customers(id, name), product:products(product_name)')
+        .select('id, project_code, fiscal_year, start_date, end_date, customer:customers(id, customer_name), product:products(product_name)')
         .order('end_date', { ascending: false });
       if (error) throw error;
       return data || [];
@@ -181,7 +181,7 @@ export const Overview: React.FC = () => {
       const status = getContractStatus(c.start_date, c.end_date);
       if (contractStatusFilter !== 'all' && status.key !== contractStatusFilter) return false;
       if (!q) return true;
-      const bankName = (c.customer?.name || '').toLowerCase();
+      const bankName = (c.customer?.customer_name || '').toLowerCase();
       const projectCode = (c.project_code || '').toLowerCase();
       const productName = (c.product?.product_name || '').toLowerCase();
       return bankName.includes(q) || projectCode.includes(q) || productName.includes(q);
@@ -666,7 +666,7 @@ export const Overview: React.FC = () => {
                         key={c.id}
                         className="hover:bg-slate-50 transition"
                       >
-                        <td className="py-3 px-6 font-semibold text-slate-900">{c.customer?.name || 'Unknown'}</td>
+                        <td className="py-3 px-6 font-semibold text-slate-900">{c.customer?.customer_name || 'Unknown'}</td>
                         <td className="py-3 px-6 text-slate-600">{c.product?.product_name || '—'}</td>
                         <td className="py-3 px-6 text-slate-600">{c.project_code || <span className="text-slate-300 italic">—</span>}</td>
                         <td className="py-3 px-6 text-slate-600">{new Date(c.start_date).toLocaleDateString()}</td>

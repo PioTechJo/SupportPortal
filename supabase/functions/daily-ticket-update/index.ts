@@ -6,6 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const AUTO_COMMENT_TEXT = "The Pio-Tech team is currently investigating your ticket and will get back to you with an update as soon as possible."
+
 Deno.serve(async (req) => {
   // Handle CORS preflight options request
   if (req.method === 'OPTIONS') {
@@ -21,7 +23,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // 1. Initialize Supabase Client with service_role key to bypass Row Level Security (RLS) policies securely
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
@@ -31,23 +32,37 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
+    // 0. Admin on/off switch
+    const { data: toggleSetting } = await supabase
+      .from('system_settings')
+      .select('setting_value')
+      .eq('setting_key', 'auto_comment_enabled')
+      .maybeSingle()
+
+    if (toggleSetting?.setting_value === 'false') {
+      return new Response(
+        JSON.stringify({ success: true, message: 'Auto-comment is disabled by admin, nothing to do.' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     console.log('Daily Ticket Update: Starting processing job at', new Date().toISOString())
 
-    // 2. Query all tickets WHERE status IN ('open','in_progress') AND last_auto_comment_at < NOW() - INTERVAL '24 hours' (or is null)
+    // 1. Tickets that are still open/in-progress and haven't had a support update in 24h
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-    
+
     const { data: tickets, error: fetchError } = await supabase
       .from('tickets')
-      .select('id, title, created_by, ticket_statuses!inner(status_code)')
-      .in('ticket_statuses.status_code', ['NEW', 'ASSIGNED', 'INVESTIGATION', 'PENDING_CUSTOMER'])
-      .or(`last_auto_comment_at.is.null,last_auto_comment_at.lt.${twentyFourHoursAgo}`)
+      .select('id, created_by, last_progress_comment_at, ticket_statuses!inner(status_code)')
+      .in('ticket_statuses.status_code', ['NEW', 'ASSIGNED', 'INVESTIGATION', 'DEVELOPMENT_ACTION', 'PENDING_CUSTOMER'])
+      .or(`last_progress_comment_at.is.null,last_progress_comment_at.lt.${twentyFourHoursAgo}`)
 
     if (fetchError) {
       throw fetchError
     }
 
     if (!tickets || tickets.length === 0) {
-      console.log('Daily Ticket Update: No tickets match criteria (Status: Open/In-progress with no auto update inside previous 24h).')
+      console.log('Daily Ticket Update: No tickets match criteria.')
       return new Response(
         JSON.stringify({ success: true, processedCount: 0, details: 'No eligible tickets required updates.' }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -58,81 +73,53 @@ Deno.serve(async (req) => {
     const now = new Date().toISOString()
     const results = []
 
-    // 3. Process each ticket with transaction safety guarantees (wrapped in per-ticket handles)
     for (const ticket of tickets) {
       try {
-        console.log(`Starting automated comment transaction on ticket ID: ${ticket.id}`)
-
-        // Format short ticket code segment e.g., tick-4823 -> 4823
-        const ticketCode = ticket.id.replace('tick-', '').toUpperCase()
-
-        // a. INSERT daily update notice into comments (or ticket_comments as specified by criteria)
-        // We write with fallback mechanisms to ensure perfect resilience whichever table name is present
-        const commentData = {
-          ticket_id: ticket.id,
-          comment_text: "Our team is actively working on your ticket. We will provide an update as soon as possible. Thank you for your patience.",
-          comment_type: 'system_auto',
-          created_by: null,
-          created_at: now
-        }
-
+        // a. Post the auto-comment on the ticket timeline
         const { error: commentErr } = await supabase
           .from('ticket_comments')
-          .insert([commentData])
+          .insert({
+            ticket_id: ticket.id,
+            author_id: null,
+            comment_text: AUTO_COMMENT_TEXT,
+            is_system_generated: true,
+          })
 
         if (commentErr) {
-          console.warn(`Failed insert into ticket_comments table for ticket ${ticket.id}. Attempting standard comments fallback database...`, commentErr)
-          
-          // Fallback to application's standard "comments" table
-          const fallbackCommentData = {
-            ticket_id: ticket.id,
-            content: "Our team is actively working on your ticket. We will provide an update as soon as possible. Thank you for your patience.",
-            is_internal: false,
-            author_name: "System Automated Update",
-            author_role: "system",
-            created_at: now
-          }
-
-          const { error: fallbackErr } = await supabase
-            .from('comments')
-            .insert([fallbackCommentData])
-
-          if (fallbackErr) {
-            throw new Error(`Failed to insert update message on both system schemas: ${fallbackErr.message}`)
-          }
+          throw commentErr
         }
 
-        // b. UPDATE ticket with last auto-comment timestamp to throttle notifications
+        // b. Update last_progress_comment_at to throttle future runs
         const { error: updateErr } = await supabase
           .from('tickets')
-          .update({ last_auto_comment_at: now })
+          .update({ last_progress_comment_at: now })
           .eq('id', ticket.id)
 
         if (updateErr) {
           throw updateErr
         }
 
-        // c. INSERT custom client alert/notification to ticket creator
+        // c. Notify the customer who filed the ticket
         if (ticket.created_by) {
           const { error: notifErr } = await supabase
             .from('notifications')
-            .insert([{
-              user_id: ticket.created_by,
+            .insert({
               profile_id: ticket.created_by,
-              content: `Update on ticket #TKT-${ticketCode}: Team is still working on your issue.`,
+              content: 'The support team posted an update on your ticket.',
               type: 'system_auto_update',
               is_read: false,
-              created_at: now
-            }])
+              link_ticket_id: ticket.id,
+              created_at: now,
+            })
 
           if (notifErr) {
-            console.warn(`Could not post notification stream to client ${ticket.created_by}:`, notifErr)
+            console.warn(`Could not post notification to client ${ticket.created_by}:`, notifErr)
           }
         }
 
         results.push({ ticketId: ticket.id, status: 'success' })
       } catch (ticketError: any) {
-        console.error(`Sub-task error during ticket ${ticket.id} lifecycle execution:`, ticketError)
+        console.error(`Error processing ticket ${ticket.id}:`, ticketError)
         results.push({ ticketId: ticket.id, status: 'failed', error: ticketError.message })
       }
     }
@@ -140,11 +127,7 @@ Deno.serve(async (req) => {
     console.log(`Daily Ticket Update: Processed ${results.filter(r => r.status === 'success').length} out of ${tickets.length} successfully.`)
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        totalChecked: tickets.length,
-        results
-      }),
+      JSON.stringify({ success: true, totalChecked: tickets.length, results }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 

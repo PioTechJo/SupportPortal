@@ -9,11 +9,9 @@ import {
   HelpCircle, 
   Clock, 
   Activity, 
-  CheckCircle2, 
-  AlertTriangle, 
-  ChevronRight, 
-  Building,
-  UserCheck
+  CheckCircle2,
+  Wrench,
+  ChevronRight
 } from 'lucide-react';
 
 export const Dashboard: React.FC = () => {
@@ -29,7 +27,7 @@ export const Dashboard: React.FC = () => {
   const inProgressTickets = tickets.filter(t => t.status === 'in_progress').length;
   const resolvedTickets = tickets.filter(t => t.status === 'resolved').length;
   const closedTickets = tickets.filter(t => t.status === 'closed').length;
-  const urgentTickets = tickets.filter(t => t.priority === 'urgent' && t.status !== 'closed').length;
+  const supportDevActionTickets = tickets.filter(t => (t as any).status_code === 'INVESTIGATION' || (t as any).status_code === 'DEVELOPMENT_ACTION').length;
 
   const priorityUrgentCount = tickets.filter(t => t.priority === 'urgent').length;
   const priorityHighCount = tickets.filter(t => t.priority === 'high').length;
@@ -113,14 +111,14 @@ export const Dashboard: React.FC = () => {
 
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs uppercase font-bold tracking-wider">{t('dashboard.urgentPending')}</span>
-              <AlertTriangle size={18} className="text-red-600 animate-pulse" />
+              <span className="text-xs uppercase font-bold tracking-wider">{t('dashboard.supportDevAction')}</span>
+              <Wrench size={18} className="text-indigo-600" />
             </div>
             <p className="text-3xl font-bold text-slate-900 mt-2 font-mono">
-              {urgentTickets}
+              {supportDevActionTickets}
             </p>
-            <p className="text-[10.5px] text-red-600 font-semibold mt-2">
-              {t('dashboard.actionRequired')}
+            <p className="text-[10.5px] text-indigo-600 font-semibold mt-2">
+              {t('dashboard.activeWorkInProgress')}
             </p>
           </div>
 
@@ -275,39 +273,6 @@ export const Dashboard: React.FC = () => {
             )}
           </div>
 
-          {/* Quick Active SLA Support Tiers info (for visual balance) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
-              <h4 className="font-bold text-slate-900 flex items-center gap-2 text-sm">
-                <Building className="text-teal-600" size={16} />
-                {t('dashboard.slaResponseWindows')}
-              </h4>
-              <ul className="mt-3.5 space-y-2 text-xs text-slate-500">
-                <li className="flex justify-between border-b border-slate-100 pb-1.5"><span className="font-semibold text-slate-700">{t('dashboard.urgentSla')}:</span> <span className="bg-red-50 text-red-600 font-bold px-1.5 rounded font-mono">{t('dashboard.slaUrgentValue')}</span></li>
-                <li className="flex justify-between border-b border-slate-100 pb-1.5"><span className="font-semibold text-slate-700">{t('dashboard.highSla')}:</span> <span className="bg-amber-50 text-amber-600 font-bold px-1.5 rounded font-mono font-medium">{t('dashboard.slaHighValue')}</span></li>
-                <li className="flex justify-between"><span className="font-semibold text-slate-700">{t('dashboard.mediumGeneralSla')}:</span> <span className="bg-blue-50 text-blue-600 font-bold px-1.5 rounded font-mono">{t('dashboard.slaMediumValue')}</span></li>
-              </ul>
-            </div>
-
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
-              <div>
-                <h4 className="font-bold text-slate-900 flex items-center gap-2 text-sm">
-                  <UserCheck className="text-teal-600" size={16} />
-                  {t('dashboard.activeAgentDuty')}
-                </h4>
-                <p className="text-xs text-slate-500 mt-2">
-                  {t('dashboard.agentOnlineNote')}
-                </p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-100 text-xs text-teal-600 font-semibold uppercase tracking-wider flex items-center justify-between">
-                <span>{t('dashboard.shiftStatusActive')}</span>
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Right pane: Recent Activity / Recent tickets list */}
