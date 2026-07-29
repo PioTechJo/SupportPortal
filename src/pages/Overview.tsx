@@ -208,6 +208,7 @@ export const Overview: React.FC = () => {
       case 'REOPENED': return 'bg-indigo-50 text-indigo-700 border-indigo-200';
       case 'ASSIGNED': return 'bg-purple-50 text-purple-700 border-purple-200';
       case 'INVESTIGATION': return 'bg-amber-50 text-amber-700 border-amber-200';
+      case 'DEVELOPMENT_ACTION': return 'bg-indigo-50 text-indigo-700 border-indigo-200';
       case 'PENDING_CUSTOMER': return 'bg-orange-50 text-orange-700 border-orange-200';
       case 'RESOLVED': return 'bg-green-50 text-green-700 border-green-200';
       case 'CLOSED': return 'bg-gray-50 text-gray-700 border-gray-200';
@@ -219,7 +220,7 @@ export const Overview: React.FC = () => {
   };
 
   // --- Analytics Metrics Extraction ---
-  const metrics = analyticsData?.metrics || { new_tickets: 0, reopened_tickets: 0, in_progress_tickets: 0, closed_tickets: 0 };
+  const metrics = analyticsData?.metrics || { new_tickets: 0, reopened_tickets: 0, in_progress_tickets: 0, development_action_tickets: 0, closed_tickets: 0 };
   const customerListData = analyticsData?.ticketsByBankAll || [];
   const bankListFilteredData = useMemo(() => {
     return customerListData.filter((bank: any) => bank.name.toLowerCase().includes(bankListSearch.toLowerCase()));
@@ -363,7 +364,7 @@ export const Overview: React.FC = () => {
           <Filter size={16} className="text-slate-500" /> {t('overview.analyticsFilters')}
         </div>
         <div className="flex flex-wrap gap-2.5 items-center bg-slate-50 p-2 rounded-lg border border-slate-200">
-          <MultiSelect options={tenants.map(t => ({ id: t.id, name: t.name }))} selectedValues={selectedCustomerIds} onChange={setSelectedCustomerIds} placeholder={t('overview.allBanks')} />
+          <MultiSelect options={tenants.map(t => ({ id: t.id, name: t.customer_code ? `${t.name} - ${t.customer_code}` : t.name }))} selectedValues={selectedCustomerIds} onChange={setSelectedCustomerIds} placeholder={t('overview.allBanks')} />
           <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1 focus-within:ring-1 focus-within:ring-blue-500">
             <input type="date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); setSelectedYear('all'); }} className="bg-transparent text-slate-900 text-xs outline-none w-[110px]" />
             <span className="text-slate-400 text-xs">{t('overview.to')}</span>
@@ -386,11 +387,11 @@ export const Overview: React.FC = () => {
 
       {/* Analytics Metrics Cards */}
       {analyticsLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 animate-pulse">
-          {[1,2,3,4,5].map(i => <div key={i} className="bg-white h-24 rounded-xl border border-slate-200" />)}
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 animate-pulse">
+          {[1,2,3,4,5,6].map(i => <div key={i} className="bg-white h-24 rounded-xl border border-slate-200" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
           <div 
             className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between cursor-pointer hover:bg-slate-50 transition"
             onClick={() => navigate('/tickets?status=new')}
@@ -433,7 +434,21 @@ export const Overview: React.FC = () => {
             </div>
           </div>
 
-          <div 
+          <div
+            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between cursor-pointer hover:bg-slate-50 transition"
+            onClick={() => navigate('/tickets?status=development_action')}
+          >
+            <div className="flex items-center justify-between text-slate-400">
+              <span className="text-xs uppercase font-bold tracking-wider">{t('overview.developmentAction')}</span>
+              <Activity size={18} className="text-indigo-600" />
+            </div>
+            <div className="mt-2.5">
+              <span className="text-3xl font-bold text-slate-900">{metrics.development_action_tickets ?? 0}</span>
+              <span className="text-[10.5px] text-slate-500 block mt-1">{t('overview.developmentActionDesc')}</span>
+            </div>
+          </div>
+
+          <div
             className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between cursor-pointer hover:bg-slate-50 transition"
             onClick={() => navigate('/tickets?escalated=true')}
           >

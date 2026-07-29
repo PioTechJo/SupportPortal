@@ -19,12 +19,12 @@ serve(async (req) => {
       throw new Error("Missing required parameters: to, subject, body");
     }
 
-    const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+    const POWER_AUTOMATE_WEBHOOK_URL = Deno.env.get("POWER_AUTOMATE_EMAIL_WEBHOOK_URL");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    if (!RESEND_API_KEY) {
-      throw new Error("RESEND_API_KEY is not configured");
+    if (!POWER_AUTOMATE_WEBHOOK_URL) {
+      throw new Error("POWER_AUTOMATE_EMAIL_WEBHOOK_URL is not configured");
     }
 
     const htmlBody = `
@@ -44,28 +44,17 @@ serve(async (req) => {
 
     let emailStatus = 'sent';
     let errorMessage = null;
-    let data;
 
     try {
-      const res = await fetch("https://api.resend.com/emails", {
+      const res = await fetch(POWER_AUTOMATE_WEBHOOK_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${RESEND_API_KEY}`
-        },
-        body: JSON.stringify({
-          from: "support@pio-tech.com",
-          to: to,
-          subject: subject,
-          html: htmlBody
-        })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to, subject, htmlBody }),
       });
-
-      data = await res.json();
 
       if (!res.ok) {
         emailStatus = 'failed';
-        errorMessage = data.message || JSON.stringify(data);
+        errorMessage = `Power Automate webhook returned ${res.status}: ${await res.text()}`;
       }
     } catch (err: any) {
       emailStatus = 'failed';
@@ -95,7 +84,7 @@ serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ success: true, message: "Email sent successfully via Resend", data }), {
+    return new Response(JSON.stringify({ success: true, message: "Email sent successfully via Power Automate" }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

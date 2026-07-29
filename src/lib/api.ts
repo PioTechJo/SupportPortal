@@ -29,7 +29,7 @@ const DEFAULT_PRIORITIESList: PriorityOption[] = [
   { id: 'p-low', name: 'Low' },
   { id: 'p-medium', name: 'Medium' },
   { id: 'p-high', name: 'High' },
-  { id: 'p-critical', name: 'Critical' }
+  { id: 'p-urgent', name: 'Urgent' }
 ];
 
 const DEFAULT_DIAGNOSTIC_QUESTIONS: AIDiagnosticQuestion[] = [
@@ -775,6 +775,7 @@ export const api = {
           id: row.id,
           name: row.customer_name,
           domain: (row.customer_code || 'customer').toLowerCase() + '.com',
+          customer_code: row.customer_code || undefined,
           country: row.country,
           logo_url: '🏢',
           primary_color: '#0f766e',
@@ -816,6 +817,7 @@ export const api = {
           id: row.id,
           name: row.customer_name,
           domain: (row.customer_code || 'customer').toLowerCase() + '.com',
+          customer_code: row.customer_code || undefined,
           country: row.country,
           logo_url: '🏢',
           primary_color: '#0f766e',
@@ -857,6 +859,7 @@ export const api = {
           id: data.id,
           name: data.customer_name,
           domain: (data.customer_code || 'customer').toLowerCase() + '.com',
+          customer_code: data.customer_code || undefined,
           logo_url: tenant.logo_url || '🏢',
           primary_color: tenant.primary_color || '#0f766e',
           support_tier: tenant.support_tier || 'enterprise',
@@ -891,6 +894,7 @@ export const api = {
           id: data.id,
           name: data.customer_name,
           domain: (data.customer_code || 'customer').toLowerCase() + '.com',
+          customer_code: data.customer_code || undefined,
           country: data.country,
           logo_url: '🏢',
           primary_color: '#0f766e',
@@ -978,7 +982,7 @@ export const api = {
           
           let frontendStatus = 'open';
           if (sCode === 'NEW') frontendStatus = 'open';
-          else if (sCode === 'ASSIGNED' || sCode === 'INVESTIGATION' || sCode === 'PENDING_CUSTOMER') frontendStatus = 'in_progress';
+          else if (sCode === 'ASSIGNED' || sCode === 'INVESTIGATION' || sCode === 'DEVELOPMENT_ACTION' || sCode === 'PENDING_CUSTOMER') frontendStatus = 'in_progress';
           else if (sCode === 'RESOLVED') frontendStatus = 'resolved';
           else if (sCode === 'CLOSED') frontendStatus = 'closed';
           else if (sCode === 'PENDING_APPROVAL') frontendStatus = 'pending_approval';
@@ -1126,7 +1130,7 @@ async getTicketsPaginated(page: number = 1, limit: number = 50, customerId?: str
           
           let frontendStatus = 'open';
           if (sCode === 'NEW') frontendStatus = 'open';
-          else if (sCode === 'ASSIGNED' || sCode === 'INVESTIGATION' || sCode === 'PENDING_CUSTOMER') frontendStatus = 'in_progress';
+          else if (sCode === 'ASSIGNED' || sCode === 'INVESTIGATION' || sCode === 'DEVELOPMENT_ACTION' || sCode === 'PENDING_CUSTOMER') frontendStatus = 'in_progress';
           else if (sCode === 'RESOLVED') frontendStatus = 'resolved';
           else if (sCode === 'CLOSED') frontendStatus = 'closed';
           else if (sCode === 'PENDING_APPROVAL') frontendStatus = 'pending_approval';
@@ -1211,7 +1215,7 @@ async getTicketsPaginated(page: number = 1, limit: number = 50, customerId?: str
         
         let frontendStatus = 'open';
         if (sCode === 'NEW') frontendStatus = 'open';
-        else if (sCode === 'ASSIGNED' || sCode === 'INVESTIGATION' || sCode === 'PENDING_CUSTOMER') frontendStatus = 'in_progress';
+        else if (sCode === 'ASSIGNED' || sCode === 'INVESTIGATION' || sCode === 'DEVELOPMENT_ACTION' || sCode === 'PENDING_CUSTOMER') frontendStatus = 'in_progress';
         else if (sCode === 'RESOLVED') frontendStatus = 'resolved';
         else if (sCode === 'CLOSED') frontendStatus = 'closed';
         else if (sCode === 'PENDING_APPROVAL') frontendStatus = 'pending_approval';
@@ -1395,7 +1399,7 @@ async getTicketsPaginated(page: number = 1, limit: number = 50, customerId?: str
 
     const [{ data: statusObj }, { data: priorityObj }, { data: productObj }] = await Promise.all([
       supabase.from('ticket_statuses').select('id').eq('status_code', 'NEW').maybeSingle(),
-      supabase.from('priorities').select('id').eq('priority_code', 'CRITICAL').maybeSingle(),
+      supabase.from('priorities').select('id').eq('priority_code', 'URGENT').maybeSingle(),
       supabase.from('products').select('id').eq('product_code', 'LEGACY').maybeSingle(),
     ]);
 
@@ -1908,7 +1912,7 @@ async getTicketsPaginated(page: number = 1, limit: number = 50, customerId?: str
     if (pStr.includes('low')) mappedPriority = 'low';
     if (pStr.includes('medium')) mappedPriority = 'medium';
     if (pStr.includes('high')) mappedPriority = 'high';
-    if (pStr.includes('critical') || pStr.includes('urgent')) mappedPriority = 'urgent';
+    if (pStr.includes('urgent')) mappedPriority = 'urgent';
 
     return safeExecute<Ticket>(
       async () => {

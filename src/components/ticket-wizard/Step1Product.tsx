@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { ArrowLeft, ArrowRight, Package } from 'lucide-react';
+import { ArrowLeft, Package } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface Step1ProductProps {
@@ -82,6 +82,7 @@ export const Step1Product: React.FC<Step1ProductProps> = ({ organizationId, sele
                   onClick={() => {
                     setLocalSelectedId(p.id);
                     setLocalSelectedName(p.product_name);
+                    onSelect(p.id, p.product_name);
                   }}
                   className={`p-4 rounded-[10px] border-[0.5px] text-start transition-colors flex gap-3 items-start ${
                     isSelected 
@@ -103,21 +104,13 @@ export const Step1Product: React.FC<Step1ProductProps> = ({ organizationId, sele
         )}
       </div>
 
-      <div className="pt-6 mt-6 border-t border-slate-200 flex justify-between items-center shrink-0">
-        {onBack ? (
+      {onBack && (
+        <div className="pt-6 mt-6 border-t border-slate-200 flex justify-between items-center shrink-0">
           <button onClick={onBack} className="flex items-center gap-2 px-4 py-2 border-[0.5px] border-slate-200 rounded-[8px] text-[14px] font-medium text-slate-600 hover:bg-slate-50 transition-colors">
             <ArrowLeft className="rtl:rotate-180" size={16} /> {t('wizard.back')}
           </button>
-        ) : <div />}
-        
-        <button 
-          onClick={() => localSelectedId && onSelect(localSelectedId, localSelectedName)}
-          disabled={!localSelectedId}
-          className="bg-[#f97316] disabled:opacity-50 text-white font-medium text-[14px] py-2 px-4 rounded-[8px] flex items-center gap-2 hover:bg-[#ea580c] transition-colors"
-        >
-          {t('wizard.next')} <ArrowRight className="rtl:rotate-180" size={16} />
-        </button>
-      </div>
+        </div>
+      )}
     </div>
   );
 };

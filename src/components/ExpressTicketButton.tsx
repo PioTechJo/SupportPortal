@@ -2,10 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Zap, X, Send, CheckCircle2, Mic, Square, Trash2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
 
 export const ExpressTicketButton: React.FC = () => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
@@ -86,7 +88,7 @@ export const ExpressTicketButton: React.FC = () => {
       setIsRecording(true);
     } catch (err) {
       console.error('Microphone access error:', err);
-      setMicError('Could not access your microphone. Please allow microphone access in your browser settings and try again.');
+      setMicError(t('expressTicket.micError'));
     }
   };
 
@@ -107,7 +109,7 @@ export const ExpressTicketButton: React.FC = () => {
     setSubmitting(true);
     try {
       const ticket = await api.createExpressTicket({
-        description: trimmedDescription || '🎤 Voice report attached — no transcript yet.',
+        description: trimmedDescription || `🎤 ${t('expressTicket.voiceReportDescription')}`,
         customerId,
         createdBy: user.id,
       });
@@ -138,7 +140,7 @@ export const ExpressTicketButton: React.FC = () => {
       setCreatedTicket(ticket);
     } catch (err) {
       console.error('Failed to submit express ticket:', err);
-      alert('Something went wrong sending your report. Please try again.');
+      alert(t('expressTicket.submitError'));
     } finally {
       setSubmitting(false);
     }
@@ -149,10 +151,10 @@ export const ExpressTicketButton: React.FC = () => {
       <button
         onClick={() => setIsOpen(true)}
         className="fixed bottom-6 right-6 rtl:right-auto rtl:left-6 z-40 flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-3 rounded-full shadow-lg shadow-red-600/30 transition-transform hover:scale-105"
-        title="Report an urgent issue right now"
+        title={t('expressTicket.reportNow')}
       >
         <Zap size={18} className="fill-current" />
-        Report Urgent Issue
+        {t('expressTicket.reportUrgentIssue')}
       </button>
 
       {isOpen && (
@@ -163,13 +165,13 @@ export const ExpressTicketButton: React.FC = () => {
                 <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
                   <CheckCircle2 size={28} className="text-emerald-600" />
                 </div>
-                <h2 className="text-lg font-bold text-slate-800 mb-1">Received!</h2>
+                <h2 className="text-lg font-bold text-slate-800 mb-1">{t('expressTicket.received')}</h2>
                 <p className="text-sm text-slate-500 mb-4">
-                  Ticket <span className="font-semibold text-slate-700">{createdTicket.ticket_no || createdTicket.id.slice(0, 8).toUpperCase()}</span> was created and our team has been alerted. We'll get back to you shortly.
+                  {t('expressTicket.ticketCreatedPrefix')} <span className="font-semibold text-slate-700">{createdTicket.ticket_no || createdTicket.id.slice(0, 8).toUpperCase()}</span> {t('expressTicket.ticketCreatedSuffix')}
                 </p>
                 {voiceUploadFailed && (
                   <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-4">
-                    Your voice note couldn't be attached. Please add a written description on the ticket so our team has the details.
+                    {t('expressTicket.voiceUploadFailed')}
                   </p>
                 )}
                 <div className="flex justify-center gap-2">
@@ -177,7 +179,7 @@ export const ExpressTicketButton: React.FC = () => {
                     onClick={handleClose}
                     className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors"
                   >
-                    Close
+                    {t('expressTicket.close')}
                   </button>
                   <button
                     onClick={() => {
@@ -186,7 +188,7 @@ export const ExpressTicketButton: React.FC = () => {
                     }}
                     className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
                   >
-                    View Ticket
+                    {t('expressTicket.viewTicket')}
                   </button>
                 </div>
               </div>
@@ -195,7 +197,7 @@ export const ExpressTicketButton: React.FC = () => {
                 <div className="flex items-center justify-between p-4 border-b border-slate-100">
                   <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                     <Zap size={20} className="text-red-600" />
-                    Report Urgent Issue
+                    {t('expressTicket.reportUrgentIssue')}
                   </h2>
                   <button onClick={handleClose} className="text-slate-400 hover:text-slate-600 transition-colors">
                     <X size={20} />
@@ -204,13 +206,13 @@ export const ExpressTicketButton: React.FC = () => {
 
                 <div className="p-4 space-y-3">
                   <p className="text-sm text-slate-500">
-                    Skip the full form - just tell us what's wrong (type it or record a quick voice note). This goes straight to our support team as a critical ticket.
+                    {t('expressTicket.description')}
                   </p>
                   <textarea
                     autoFocus
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    placeholder="e.g. AML alerts stopped appearing since this morning, we need this fixed urgently..."
+                    placeholder={t('expressTicket.placeholder')}
                     className="w-full h-28 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 resize-none"
                   />
 
@@ -223,7 +225,7 @@ export const ExpressTicketButton: React.FC = () => {
                       <audio controls src={audioUrl} className="flex-1 h-9" />
                       <button
                         onClick={handleReRecord}
-                        title="Delete recording"
+                        title={t('expressTicket.deleteRecording')}
                         className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors shrink-0"
                       >
                         <Trash2 size={16} />
@@ -239,7 +241,7 @@ export const ExpressTicketButton: React.FC = () => {
                       }`}
                     >
                       {isRecording ? <Square size={16} className="fill-current" /> : <Mic size={16} />}
-                      {isRecording ? 'Stop Recording' : 'Or record a voice note instead'}
+                      {isRecording ? t('expressTicket.stopRecording') : t('expressTicket.recordVoiceNote')}
                     </button>
                   )}
                 </div>
@@ -249,7 +251,7 @@ export const ExpressTicketButton: React.FC = () => {
                     onClick={handleClose}
                     className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors"
                   >
-                    Cancel
+                    {t('expressTicket.cancel')}
                   </button>
                   <button
                     onClick={handleSend}
@@ -261,7 +263,7 @@ export const ExpressTicketButton: React.FC = () => {
                     ) : (
                       <Send size={16} />
                     )}
-                    Send Now
+                    {t('expressTicket.sendNow')}
                   </button>
                 </div>
               </>

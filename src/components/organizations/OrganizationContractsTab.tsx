@@ -68,8 +68,8 @@ export const OrganizationContractsTab: React.FC<OrganizationContractsTabProps> =
         const mappedProducts = orgProductsData.data
           .filter(item => item.product)
           .map(item => ({
-            id: item.product_id,
-            name: Array.isArray(item.product) ? item.product[0]?.product_name : item.product?.product_name,
+            id: Array.isArray(item.product) ? item.product[0]?.id : (item.product as any)?.id,
+            name: Array.isArray(item.product) ? item.product[0]?.product_name : (item.product as any)?.product_name,
             description: ''
           }));
         setProducts(mappedProducts as any[]);

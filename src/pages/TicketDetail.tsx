@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
+import { getRenderedEmail } from "../lib/emailTemplates";
 import {
   ArrowLeft,
   Clock,
@@ -105,6 +106,10 @@ export const TicketDetail: React.FC = () => {
   const [remoteMessage, setRemoteMessage] = useState("");
   const [requestingRemote, setRequestingRemote] = useState(false);
 
+  const [editingCreatedDate, setEditingCreatedDate] = useState(false);
+  const [newCreatedDate, setNewCreatedDate] = useState("");
+  const [savingCreatedDate, setSavingCreatedDate] = useState(false);
+
   const isAdmin = ["ADMIN", "ADMINISTRATOR", "CEO", "SUPPORT_MANAGER", "SYS_ADMIN"].includes(
     user?.role_code?.toUpperCase() || user?.role_name?.toUpperCase() || "",
   );
@@ -176,7 +181,7 @@ export const TicketDetail: React.FC = () => {
       ticket.priority ||
       ""
     ).toUpperCase();
-    if (prioName === "CRITICAL") slaHours = 4;
+    if (prioName === "URGENT") slaHours = 4;
     else if (prioName === "HIGH") slaHours = 24;
     else if (prioName === "LOW") slaHours = 72;
 
@@ -507,11 +512,94 @@ export const TicketDetail: React.FC = () => {
           c.id === commentId ? { ...c, escalation_returned_at: returnedAt } : c,
         ),
       );
+
+      // The developer/specialized team handed the ticket back to support — reflect that
+      // automatically, as long as the ticket hasn't moved on to a later stage in the meantime
+      // (e.g. already resolved, pending approval, or closed).
+      const currentStatusCode = (ticket?.status?.status_code || ticket?.status_code || "").toUpperCase();
+      if (currentStatusCode === "DEVELOPMENT_ACTION") {
+        try {
+          const { data: supportStatus, error: supportStatusError } = await supabase
+            .from("ticket_statuses")
+            .select("id")
+            .eq("status_code", "INVESTIGATION")
+            .single();
+
+          if (!supportStatusError && supportStatus) {
+            const oldStatusId = ticket?.status_id;
+
+            await supabase
+              .from("tickets")
+              .update({ status_id: supportStatus.id })
+              .eq("id", id);
+
+            await supabase.from("ticket_status_history").insert({
+              ticket_id: id,
+              old_status_id: oldStatusId,
+              new_status_id: supportStatus.id,
+              changed_by: user?.id,
+              change_notes: "Specialized team returned the ticket to support",
+            });
+
+            setTicket((prev: any) => prev ? {
+              ...prev,
+              status_id: supportStatus.id,
+              status: { ...prev.status, status_code: "INVESTIGATION", status_name: "Support Action" },
+              status_code: "INVESTIGATION",
+            } : prev);
+          }
+        } catch (statusErr) {
+          console.error("Error reverting ticket status after return:", statusErr);
+        }
+      }
     } catch (err) {
       console.error("Error marking returned:", err);
       alert("Failed to mark internal note as returned.");
     } finally {
       setUploadingInternalReturns((prev) => ({ ...prev, [commentId]: false }));
+    }
+  };
+
+  const handleStartEditCreatedDate = () => {
+    if (!ticket?.created_at) return;
+    // datetime-local inputs need "YYYY-MM-DDTHH:mm" in local time, not the raw ISO string.
+    const d = new Date(ticket.created_at);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const localValue = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    setNewCreatedDate(localValue);
+    setEditingCreatedDate(true);
+  };
+
+  const handleSaveCreatedDate = async () => {
+    if (!newCreatedDate || !id || !user) return;
+    setSavingCreatedDate(true);
+    try {
+      const newDateIso = new Date(newCreatedDate).toISOString();
+      const oldCreatedAt = ticket.created_at;
+
+      const { error } = await supabase
+        .from("tickets")
+        .update({ created_at: newDateIso })
+        .eq("id", id);
+
+      if (error) throw error;
+
+      await supabase.from("audit_log").insert({
+        table_name: "tickets",
+        record_id: id,
+        action_type: "CREATED_DATE_ADJUSTED",
+        old_value: { created_at: oldCreatedAt },
+        new_value: { created_at: newDateIso },
+        changed_by: user.id,
+      });
+
+      setTicket((prev: any) => (prev ? { ...prev, created_at: newDateIso } : prev));
+      setEditingCreatedDate(false);
+    } catch (err) {
+      console.error("Error updating created date:", err);
+      alert("Failed to update the created date.");
+    } finally {
+      setSavingCreatedDate(false);
     }
   };
 
@@ -555,6 +643,43 @@ export const TicketDetail: React.FC = () => {
 
       if (error) throw error;
 
+      // Escalating to a specialized team means the ticket has moved from general
+      // support into development's hands — reflect that automatically so the bank
+      // sees "Development Action" without anyone having to change the status manually.
+      try {
+        const { data: devStatus, error: devStatusError } = await supabase
+          .from("ticket_statuses")
+          .select("id")
+          .eq("status_code", "DEVELOPMENT_ACTION")
+          .single();
+
+        if (!devStatusError && devStatus && ticket?.status_id !== devStatus.id) {
+          const oldStatusId = ticket?.status_id;
+
+          await supabase
+            .from("tickets")
+            .update({ status_id: devStatus.id })
+            .eq("id", id);
+
+          await supabase.from("ticket_status_history").insert({
+            ticket_id: id,
+            old_status_id: oldStatusId,
+            new_status_id: devStatus.id,
+            changed_by: user.id,
+            change_notes: "Ticket escalated to a specialized team",
+          });
+
+          setTicket((prev: any) => prev ? {
+            ...prev,
+            status_id: devStatus.id,
+            status: { ...prev.status, status_code: "DEVELOPMENT_ACTION", status_name: "Development Action" },
+            status_code: "DEVELOPMENT_ACTION",
+          } : prev);
+        }
+      } catch (statusErr) {
+        console.error("Error updating ticket status after escalation:", statusErr);
+      }
+
       if (data) {
         if (escalatedDeveloperName) {
           const selectedDev = teamDevelopers.find(dev => dev.full_name === escalatedDeveloperName);
@@ -565,13 +690,16 @@ export const TicketDetail: React.FC = () => {
                   
                 if (!emailFetchError && developerEmail) {
                   const tktNo = ticket?.ticket_no || ticket?.id?.substring(0, 8).toUpperCase();
-                  supabase.functions.invoke('send-email', {
-                    body: {
-                      to: developerEmail,
+                  const { subject, body } = await getRenderedEmail(
+                    'ESCALATION_DEVELOPER',
+                    { ticket_no: tktNo, subject: ticket?.subject || '', escalation_note: escalationNote },
+                    {
                       subject: `You have been assigned an escalation for ticket ${tktNo}: ${ticket?.subject || ''}`,
-                      body: `You have been assigned an escalation for ticket ${tktNo}: ${ticket?.subject || ''}.\n\nEscalation note: ${escalationNote}`,
-                      ticket_id: ticket?.id
+                      body: `You have been assigned an escalation for ticket ${tktNo}: ${ticket?.subject || ''}.\n\nEscalation note: ${escalationNote}`
                     }
+                  );
+                  supabase.functions.invoke('send-email', {
+                    body: { to: developerEmail, subject, body, ticket_id: ticket?.id }
                   }).catch(err => console.error("Error invoking send-email for escalation:", err));
                 }
               } catch (emailErr) {
@@ -766,8 +894,7 @@ export const TicketDetail: React.FC = () => {
 
   const getPriorityStyle = (priority: string) => {
     switch((priority || '').toLowerCase()) {
-      case 'urgent': 
-      case 'critical': return 'bg-red-100 text-red-700 border border-red-200';
+      case 'urgent': return 'bg-red-100 text-red-700 border border-red-200';
       case 'high': return 'bg-orange-100 text-orange-700 border border-orange-200';
       case 'medium': return 'bg-amber-100 text-amber-700 border border-amber-200';
       case 'low': return 'bg-blue-100 text-blue-700 border border-blue-200';
@@ -781,6 +908,7 @@ export const TicketDetail: React.FC = () => {
     if (st === "ASSIGNED") return "bg-purple-100 text-purple-700";
     if (st === "IN_PROGRESS" || st === "INVESTIGATION")
       return "bg-amber-100 text-amber-700";
+    if (st === "DEVELOPMENT_ACTION") return "bg-indigo-100 text-indigo-700";
     if (st === "PENDING_CUSTOMER") return "bg-orange-100 text-orange-700";
     if (st === "RESOLVED_PENDING_APPROVAL")
       return "bg-amber-100 text-amber-700";
@@ -791,7 +919,7 @@ export const TicketDetail: React.FC = () => {
 
   const getPriorityColor = (p: string) => {
     const pr = (p || "").toUpperCase();
-    if (pr === "URGENT" || pr === "CRITICAL") return "bg-red-100 text-red-700 border border-red-200";
+    if (pr === "URGENT") return "bg-red-100 text-red-700 border border-red-200";
     if (pr === "HIGH") return "bg-orange-100 text-orange-700 border border-orange-200";
     if (pr === "MEDIUM") return "bg-amber-100 text-amber-700 border border-amber-200";
     if (pr === "LOW") return "bg-blue-100 text-blue-700 border border-blue-200";
@@ -933,13 +1061,16 @@ export const TicketDetail: React.FC = () => {
       // Send email to Engineer
       if (assignedEng?.email) {
         try {
-          supabase.functions.invoke('send-email', {
-            body: {
-              to: assignedEng.email,
+          const { subject, body } = await getRenderedEmail(
+            'TICKET_ASSIGNED_ENGINEER',
+            { ticket_no: ticketNo, subject: ticket.subject, engineer_name: assignedEng.full_name || 'Engineer' },
+            {
               subject: `You have been assigned to ticket ${ticketNo}: ${ticket.subject}`,
-              body: `Hello ${assignedEng.full_name || 'Engineer'},\n\nYou have been assigned to ticket ${ticketNo}.\n\nSubject: ${ticket.subject}\n\nPlease review it in the Support Portal.`,
-              ticket_id: ticket.id
+              body: `Hello ${assignedEng.full_name || 'Engineer'},\n\nYou have been assigned to ticket ${ticketNo}.\n\nSubject: ${ticket.subject}\n\nPlease review it in the Support Portal.`
             }
+          );
+          supabase.functions.invoke('send-email', {
+            body: { to: assignedEng.email, subject, body, ticket_id: ticket.id }
           }).catch(err => console.error("Error sending email to engineer:", err));
         } catch (emailErr) {
           console.error("Unexpected error invoking send-email for engineer:", emailErr);
@@ -1065,13 +1196,16 @@ export const TicketDetail: React.FC = () => {
                 const { data: adminEmail } = await supabase.rpc('get_user_email', { p_user_id: admin.id });
                 if (adminEmail) {
                   const tktNo = ticket.ticket_no || ticket.id.substring(0, 8).toUpperCase();
-                  supabase.functions.invoke('send-email', {
-                    body: {
-                      to: adminEmail,
+                  const { subject, body } = await getRenderedEmail(
+                    'RESOLVED_ADMIN',
+                    { ticket_no: tktNo, subject: ticket.subject, resolved_by_name: user?.full_name || 'an engineer' },
+                    {
                       subject: `Ticket ${tktNo} is pending your approval`,
-                      body: `Ticket ${tktNo} has been resolved by ${user?.full_name || 'an engineer'} and is pending your approval.\n\nSubject: ${ticket.subject}`,
-                      ticket_id: id
+                      body: `Ticket ${tktNo} has been resolved by ${user?.full_name || 'an engineer'} and is pending your approval.\n\nSubject: ${ticket.subject}`
                     }
+                  );
+                  supabase.functions.invoke('send-email', {
+                    body: { to: adminEmail, subject, body, ticket_id: id }
                   }).catch(err => console.error("Error sending email to admin:", err));
                 }
               } catch (e) {
@@ -1152,13 +1286,16 @@ export const TicketDetail: React.FC = () => {
           const { data: customerEmail } = await supabase.rpc('get_user_email', { p_user_id: ticket.created_by });
           if (customerEmail) {
             const ticketNo = ticket.ticket_no || ticket.id.substring(0, 8).toUpperCase();
-            supabase.functions.invoke('send-email', {
-              body: {
-                to: customerEmail,
+            const { subject, body } = await getRenderedEmail(
+              'CLOSED_CUSTOMER',
+              { ticket_no: ticketNo, subject: ticket.subject },
+              {
                 subject: `Your ticket ${ticketNo} has been closed`,
-                body: `Your ticket ${ticketNo} has been resolved and closed by our support team. Please review and approve the resolution at your convenience.\n\nSubject: ${ticket.subject}`,
-                ticket_id: id
+                body: `Your ticket ${ticketNo} has been resolved and closed by our support team. Please review and approve the resolution at your convenience.\n\nSubject: ${ticket.subject}`
               }
+            );
+            supabase.functions.invoke('send-email', {
+              body: { to: customerEmail, subject, body, ticket_id: id }
             }).catch(err => console.error("Error sending email to customer:", err));
           }
         } catch (e) { console.error(e); }
@@ -1226,13 +1363,16 @@ export const TicketDetail: React.FC = () => {
           const { data: engineerEmail } = await supabase.rpc('get_user_email', { p_user_id: ticket.assigned_to });
           if (engineerEmail) {
             const ticketNo = ticket.ticket_no || ticket.id.substring(0, 8).toUpperCase();
-            supabase.functions.invoke('send-email', {
-              body: {
-                to: engineerEmail,
+            const { subject, body } = await getRenderedEmail(
+              'APPROVED_ENGINEER',
+              { ticket_no: ticketNo, subject: ticket.subject },
+              {
                 subject: `Your resolution for ticket ${ticketNo} has been approved`,
-                body: `Your resolution for ticket ${ticketNo} has been approved.\n\nSubject: ${ticket.subject}`,
-                ticket_id: id
+                body: `Your resolution for ticket ${ticketNo} has been approved.\n\nSubject: ${ticket.subject}`
               }
+            );
+            supabase.functions.invoke('send-email', {
+              body: { to: engineerEmail, subject, body, ticket_id: id }
             }).catch(err => console.error("Error sending email to engineer:", err));
           }
         } catch (e) { console.error(e); }
@@ -1312,13 +1452,16 @@ export const TicketDetail: React.FC = () => {
               const { data: engineerEmail } = await supabase.rpc('get_user_email', { p_user_id: ticket.assigned_to });
               if (engineerEmail) {
                 const tktNo = ticket.ticket_no || ticket.id.substring(0, 8).toUpperCase();
-                supabase.functions.invoke('send-email', {
-                  body: {
-                    to: engineerEmail,
+                const { subject, body } = await getRenderedEmail(
+                  'RETURNED_ENGINEER',
+                  { ticket_no: tktNo, subject: ticket.subject },
+                  {
                     subject: `Your resolution for ticket ${tktNo} was rejected`,
-                    body: `Your resolution for ticket ${tktNo} was rejected and requires further investigation.\n\nSubject: ${ticket.subject}`,
-                    ticket_id: id
+                    body: `Your resolution for ticket ${tktNo} was rejected and requires further investigation.\n\nSubject: ${ticket.subject}`
                   }
+                );
+                supabase.functions.invoke('send-email', {
+                  body: { to: engineerEmail, subject, body, ticket_id: id }
                 }).catch(err => console.error("Error sending email to engineer:", err));
               }
             } catch (e) { console.error(e); }
@@ -1334,7 +1477,7 @@ export const TicketDetail: React.FC = () => {
         status: {
           ...ticket.status,
           status_code: "INVESTIGATION",
-          status_name: "Investigation",
+          status_name: "Support Action",
         },
       });
     } catch (err: any) {
@@ -1360,7 +1503,7 @@ export const TicketDetail: React.FC = () => {
             <ArrowLeft size={16} />{t("ticketDetail.back")}</button>
           <div className="h-4 w-px bg-slate-300"></div>
           <div className="flex items-center gap-2">
-            <span className="text-sm font-mono font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{`TK-${id?.slice(0, 8).toUpperCase()}`}</span>
+            <span className="text-sm font-mono font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{ticket.ticket_no || `TK-${id?.slice(0, 8).toUpperCase()}`}</span>
             <span
               className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ms-1 ${getStatusColor(ticket.status?.status_code || ticket.status_code || ticket.status)}`}
             >
@@ -2161,9 +2304,43 @@ export const TicketDetail: React.FC = () => {
                   <div className="w-1.5 h-1.5 rounded-full bg-white"></div>
                 </div>
                 <div className="text-sm font-semibold text-slate-900">{t("ticketDetail.created")}</div>
-                <div className="text-xs text-slate-500 mt-1">
-                  {new Date(ticket.created_at).toLocaleString()}
-                </div>
+                {editingCreatedDate ? (
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <input
+                      type="datetime-local"
+                      value={newCreatedDate}
+                      onChange={(e) => setNewCreatedDate(e.target.value)}
+                      className="text-xs border border-slate-200 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    />
+                    <button
+                      onClick={handleSaveCreatedDate}
+                      disabled={savingCreatedDate}
+                      className="text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-md px-2 py-1 disabled:opacity-50"
+                    >
+                      {savingCreatedDate ? "..." : t("common.save", { defaultValue: "Save" })}
+                    </button>
+                    <button
+                      onClick={() => setEditingCreatedDate(false)}
+                      disabled={savingCreatedDate}
+                      className="text-xs font-semibold text-slate-500 hover:text-slate-700 px-1"
+                    >
+                      {t("common.cancel", { defaultValue: "Cancel" })}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
+                    {new Date(ticket.created_at).toLocaleString()}
+                    {isAdmin && (
+                      <button
+                        onClick={handleStartEditCreatedDate}
+                        title="Edit created date"
+                        className="text-slate-300 hover:text-blue-600 transition-colors"
+                      >
+                        <Edit size={12} />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="relative">

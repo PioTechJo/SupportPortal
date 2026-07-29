@@ -8,7 +8,6 @@ export const SLAConfiguration: React.FC = () => {
   const [message, setMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
 
   const [slaValues, setSlaValues] = useState({
-    sla_days_critical: 1,
     sla_days_urgent: 2,
     sla_days_high: 3,
     sla_days_medium: 5,
@@ -20,7 +19,6 @@ export const SLAConfiguration: React.FC = () => {
       setLoading(true);
       try {
         const keys = [
-          'sla_days_critical',
           'sla_days_urgent',
           'sla_days_high',
           'sla_days_medium',
@@ -92,7 +90,6 @@ export const SLAConfiguration: React.FC = () => {
   };
 
   const slaInputs = [
-    { key: 'sla_days_critical', label: 'Critical Priority SLA' },
     { key: 'sla_days_urgent', label: 'Urgent Priority SLA' },
     { key: 'sla_days_high', label: 'High Priority SLA' },
     { key: 'sla_days_medium', label: 'Medium Priority SLA' },

@@ -36,6 +36,7 @@ export interface Tenant {
   id: string;
   name: string;
   domain: string;
+  customer_code?: string;
   country?: string;
   logo_url?: string;
   primary_color?: string;

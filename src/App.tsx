@@ -22,6 +22,8 @@ import { RecommendationRulesManager } from './pages/admin/RecommendationRulesMan
 import { DiagnosticBuilder } from './pages/admin/DiagnosticBuilder';
 import { SLAConfiguration } from './pages/admin/SLAConfiguration';
 import { EmailLogs } from './pages/admin/EmailLogs';
+import { EmailTemplates } from './pages/admin/EmailTemplates';
+import { DailyReportConfig } from './pages/admin/DailyReportConfig';
 import { DataAssistant } from './pages/admin/DataAssistant';
 
 // Create a React Query client
@@ -264,6 +266,18 @@ export default function App() {
               <Route path="/admin/emails" element={
                 <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER']}>
                   <EmailLogs />
+                </ProtectedRoute>
+              } />
+
+              <Route path="/admin/email-templates" element={
+                <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER']}>
+                  <EmailTemplates />
+                </ProtectedRoute>
+              } />
+
+              <Route path="/admin/daily-report" element={
+                <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER']}>
+                  <DailyReportConfig />
                 </ProtectedRoute>
               } />
 

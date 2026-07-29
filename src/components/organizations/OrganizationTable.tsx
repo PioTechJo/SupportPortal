@@ -47,8 +47,13 @@ export const OrganizationTable: React.FC<OrganizationTableProps> = ({
                         {org.logo_url}
                       </div>
                       <div>
-                        <div className="font-bold text-slate-800 group-hover:text-teal-600 transition-colors">
+                        <div className="font-bold text-slate-800 group-hover:text-teal-600 transition-colors flex items-center gap-2">
                           {org.name}
+                          {org.customer_code && (
+                            <span className="text-[11px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-full px-1.5 py-0.5">
+                              {org.customer_code}
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs text-slate-500 truncate max-w-[200px]">
                           {org.domain}

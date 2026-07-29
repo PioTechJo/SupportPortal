@@ -40,8 +40,13 @@ export const OrganizationCard: React.FC<OrganizationCardProps> = ({
               )}
             </div>
             <div>
-              <h3 className="text-lg font-bold text-slate-800 leading-tight">
+              <h3 className="text-lg font-bold text-slate-800 leading-tight flex items-center gap-2">
                 {organization.name}
+                {organization.customer_code && (
+                  <span className="text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-full px-2 py-0.5">
+                    {organization.customer_code}
+                  </span>
+                )}
               </h3>
               <div className="flex items-center gap-3 text-sm font-medium text-slate-500">
                 <span>{organization.domain}</span>

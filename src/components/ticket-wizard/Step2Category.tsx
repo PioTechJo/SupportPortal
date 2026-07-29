@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { ArrowLeft, ArrowRight, ChevronRight, Folder, Package } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Folder, Package } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface Step2CategoryProps {
@@ -9,9 +9,10 @@ interface Step2CategoryProps {
   selectedCategoryId: string;
   onSelect: (id: string, name: string) => void;
   onBack: () => void;
+  onSkip: () => void;
 }
 
-export const Step2Category: React.FC<Step2CategoryProps> = ({ productId, productName, selectedCategoryId, onSelect, onBack }) => {
+export const Step2Category: React.FC<Step2CategoryProps> = ({ productId, productName, selectedCategoryId, onSelect, onBack, onSkip }) => {
   const { t, i18n } = useTranslation();
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,6 +68,7 @@ export const Step2Category: React.FC<Step2CategoryProps> = ({ productId, product
                   onClick={() => {
                     setLocalSelectedId(c.id);
                     setLocalSelectedName(displayCategory);
+                    onSelect(c.id, displayCategory);
                   }}
                   className={`p-4 rounded-[10px] border-[0.5px] text-start transition-colors flex items-center gap-4 ${
                     isSelected 
@@ -96,13 +98,8 @@ export const Step2Category: React.FC<Step2CategoryProps> = ({ productId, product
         <button onClick={onBack} className="flex items-center gap-2 px-4 py-2 border-[0.5px] border-slate-200 rounded-[8px] text-[14px] font-medium text-slate-600 hover:bg-slate-50 transition-colors">
           <ArrowLeft className="rtl:rotate-180" size={16} /> {t('wizard.back')}
         </button>
-        
-        <button 
-          onClick={() => localSelectedId && onSelect(localSelectedId, localSelectedName)}
-          disabled={!localSelectedId}
-          className="bg-[#f97316] disabled:opacity-50 text-white font-medium text-[14px] py-2 px-4 rounded-[8px] flex items-center gap-2 hover:bg-[#ea580c] transition-colors"
-        >
-          {t('wizard.next')} <ArrowRight className="rtl:rotate-180" size={16} />
+        <button onClick={onSkip} className="px-4 py-2 rounded-[8px] text-[14px] font-medium text-slate-500 hover:bg-slate-50 transition-colors">
+          {t('wizard.skipCategoryQuestions')}
         </button>
       </div>
     </div>

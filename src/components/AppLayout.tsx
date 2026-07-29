@@ -58,6 +58,8 @@ const getBreadcrumbTitle = (pathname: string, t: any) => {
     'recommendation-rules': 'recommendationRules',
     'admin/sla': 'slaConfiguration',
     'admin/emails': 'emailLogs',
+    'admin/email-templates': 'emailTemplates',
+    'admin/daily-report': 'dailyReportConfig',
     'admin': 'banksManagement'
   };
   const key = pathKeyMap[path];
@@ -65,22 +67,31 @@ const getBreadcrumbTitle = (pathname: string, t: any) => {
   return path || t('layout.dashboard');
 };
 
-const timeAgo = (dateString: string) => {
+const timeAgo = (dateString: string, t: any) => {
   const date = new Date(dateString);
   const now = new Date();
   const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
-  if (diffInSeconds < 60) return 'Just now';
-  
+  if (diffInSeconds < 60) return t('ticketDetail.justNow');
+
   const diffInMinutes = Math.floor(diffInSeconds / 60);
-  if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
-  
+  if (diffInMinutes < 60) {
+    const unit = t(diffInMinutes === 1 ? 'ticketDetail.minute' : 'ticketDetail.minutes');
+    return `${diffInMinutes} ${unit} ${t('ticketDetail.ago')}`;
+  }
+
   const diffInHours = Math.floor(diffInMinutes / 60);
-  if (diffInHours < 24) return `${diffInHours}h ago`;
-  
+  if (diffInHours < 24) {
+    const unit = t(diffInHours === 1 ? 'ticketDetail.hour' : 'ticketDetail.hours');
+    return `${diffInHours} ${unit} ${t('ticketDetail.ago')}`;
+  }
+
   const diffInDays = Math.floor(diffInHours / 24);
-  if (diffInDays < 30) return `${diffInDays}d ago`;
-  
+  if (diffInDays < 30) {
+    const unit = t(diffInDays === 1 ? 'ticketDetail.day' : 'ticketDetail.days');
+    return `${diffInDays} ${unit} ${t('ticketDetail.ago')}`;
+  }
+
   return date.toLocaleDateString();
 };
 
@@ -217,6 +228,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     { name: 'recommendationRules', path: '/recommendation-rules', icon: Brain },
     { name: 'slaConfiguration', path: '/admin/sla', icon: Clock },
     { name: 'emailLogs', path: '/admin/emails', icon: Mail },
+    { name: 'emailTemplates', path: '/admin/email-templates', icon: Mail },
+    { name: 'dailyReportConfig', path: '/admin/daily-report', icon: Clock },
     { name: 'banksManagement', path: '/admin', icon: Settings },
     { name: 'users', path: '/users', icon: Users },
   ];
@@ -509,7 +522,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                                 {notif.content}
                               </p>
                               <div className="mt-1 text-xs text-slate-400">
-                                {timeAgo(notif.created_at)}
+                                {timeAgo(notif.created_at, t)}
                               </div>
                             </div>
                             {!notif.is_read && (

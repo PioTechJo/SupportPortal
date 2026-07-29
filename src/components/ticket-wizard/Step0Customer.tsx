@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { ArrowRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface Step0CustomerProps {
@@ -42,7 +41,10 @@ export const Step0Customer: React.FC<Step0CustomerProps> = ({ selectedCustomerId
             return (
               <button
                 key={org.id}
-                onClick={() => setLocalSelectedId(org.id)}
+                onClick={() => {
+                  setLocalSelectedId(org.id);
+                  onSelect(org.id);
+                }}
                 className={`p-4 rounded-[10px] border-[0.5px] text-start transition-colors ${
                   isSelected 
                     ? 'bg-[#fff5ee] border-[#f97316]' 
@@ -55,16 +57,6 @@ export const Step0Customer: React.FC<Step0CustomerProps> = ({ selectedCustomerId
             );
           })}
         </div>
-      </div>
-
-      <div className="pt-6 mt-6 border-t border-slate-200 flex justify-end shrink-0">
-        <button 
-          onClick={() => localSelectedId && onSelect(localSelectedId)}
-          disabled={!localSelectedId}
-          className="bg-[#f97316] disabled:opacity-50 text-white font-medium text-[14px] py-2 px-4 rounded-[8px] flex items-center gap-2 hover:bg-[#ea580c] transition-colors"
-        >
-          {t('wizard.next')} <ArrowRight className="rtl:rotate-180" size={16} />
-        </button>
       </div>
     </div>
   );

@@ -172,7 +172,7 @@ export const AdminAnalytics: React.FC = () => {
 
   // Compute stats metrics
   const metrics = useMemo(() => {
-    const openCodes = ['NEW', 'ASSIGNED', 'INVESTIGATION', 'PENDING_CUSTOMER'];
+    const openCodes = ['NEW', 'ASSIGNED', 'INVESTIGATION', 'DEVELOPMENT_ACTION', 'PENDING_CUSTOMER'];
     const resolvedCodes = ['RESOLVED', 'CLOSED', 'APPROVED'];
 
     let totalOpen = 0;
@@ -455,7 +455,7 @@ export const AdminAnalytics: React.FC = () => {
 
           {/* Customer Bank dropdown */}
           <MultiSelect 
-            options={tenants.map(t => ({ id: t.id, name: t.name }))} 
+            options={tenants.map(t => ({ id: t.id, name: t.customer_code ? `${t.name} - ${t.customer_code}` : t.name }))}
             selectedValues={selectedCustomerIds} 
             onChange={setSelectedCustomerIds} 
             placeholder="All Banks" 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
+import { getRenderedEmail } from '../../lib/emailTemplates';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Step0Customer } from './Step0Customer';
@@ -32,6 +33,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [skippedDiagnostics, setSkippedDiagnostics] = useState<boolean>(false);
   
   // Extra Info for display/submission
   const [title, setTitle] = useState<string>('');
@@ -40,7 +42,36 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
   const [selectedCategoryName, setSelectedCategoryName] = useState<string>('');
   
   const [createdTicketId, setCreatedTicketId] = useState<string | null>(null);
-  
+
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const ALLOWED_ATTACHMENT_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'application/zip'];
+  const MAX_ATTACHMENT_SIZE = 5 * 1024 * 1024; // 5MB — same limit as the ticket detail page
+
+  const handleAddAttachments = (files: File[]) => {
+    const accepted: File[] = [];
+    let rejectedReason: string | null = null;
+
+    for (const file of files) {
+      if (!ALLOWED_ATTACHMENT_TYPES.includes(file.type)) {
+        rejectedReason = 'Only PDF, PNG, JPG, and ZIP files are allowed.';
+        continue;
+      }
+      if (file.size > MAX_ATTACHMENT_SIZE) {
+        rejectedReason = 'Each file must be 5MB or smaller.';
+        continue;
+      }
+      accepted.push(file);
+    }
+
+    setAttachmentError(rejectedReason);
+    if (accepted.length > 0) setAttachments(prev => [...prev, ...accepted]);
+  };
+
+  const handleRemoveAttachment = (index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+  };
+
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -186,8 +217,9 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
       
       // Determine priorityName based on scorePercentage
       let priorityName = 'Low';
-      if (scorePercentage >= 90) {
-        priorityName = 'Critical';
+      if (skippedDiagnostics) {
+        // Category + Questions were skipped — no diagnostic signal to score, so default to Low.
+        priorityName = 'Low';
       } else if (scorePercentage >= 70) {
         priorityName = 'Urgent';
       } else if (scorePercentage >= 50) {
@@ -243,7 +275,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
           description,
           customer_id: selectedCustomerId,
           product_id: selectedProductId,
-          category_id: selectedCategoryId,
+          category_id: selectedCategoryId || null,
           status_id: newStatusId,
           priority_id: finalPriorityId,
           priority_auto_flagged: isAutoFlagged,
@@ -257,6 +289,47 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
         .single();
 
       if (ticketError) throw ticketError;
+
+      // 1.35. A database trigger (enrich_ticket_no_with_project_code) appends the latest
+      // matching maintenance contract's project_code to ticket_no right after insert.
+      // That happens via an AFTER INSERT trigger + UPDATE, which the client's own INSERT...
+      // RETURNING can't see — re-fetch so the rest of this flow (notifications, emails,
+      // success screen) uses the final enriched ticket number.
+      try {
+        const { data: refreshedTicket } = await supabase
+          .from('tickets')
+          .select('ticket_no')
+          .eq('id', ticket.id)
+          .single();
+        if (refreshedTicket?.ticket_no) {
+          ticket.ticket_no = refreshedTicket.ticket_no;
+        }
+      } catch (ticketNoRefreshErr) {
+        console.error('Error refreshing ticket_no after creation:', ticketNoRefreshErr);
+      }
+
+      // 1.4. Upload any attachments picked during the wizard, now that we have a ticket id
+      if (attachments.length > 0 && user) {
+        for (const file of attachments) {
+          try {
+            const filePath = `${ticket.id}/${Date.now()}_${file.name}`;
+            const { error: uploadError } = await supabase.storage
+              .from('ticket-attachments')
+              .upload(filePath, file);
+            if (uploadError) throw uploadError;
+
+            const { error: attachDbError } = await supabase.from('ticket_attachments').insert({
+              ticket_id: ticket.id,
+              uploaded_by: user.id,
+              file_name: file.name,
+              file_path: filePath,
+            });
+            if (attachDbError) throw attachDbError;
+          } catch (attachErr) {
+            console.error('Error uploading wizard attachment:', file.name, attachErr);
+          }
+        }
+      }
 
       // 1.5. Notify Admins and Send Emails
       try {
@@ -287,28 +360,38 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
           const adminEmails = adminUsers?.map(u => u.email).filter(Boolean) || [];
 
           // Send email to each admin (fire and forget)
-          adminEmails.forEach(email => {
-            supabase.functions.invoke('send-email', {
-              body: {
-                to: email,
-                subject: `New ticket ${ticketNo} has been created by ${user?.email || 'Customer'} - ${title}`,
-                body: `Hello Admin,\n\nA new ticket has been created:\n\nTicket No: ${ticketNo}\nSubject: ${title}\nCreated By: ${user?.email || 'Customer'}\n\nPlease review the ticket in the admin portal.`,
-                ticket_id: ticket.id
-              }
-            }).catch(err => console.error("Error sending email to admin:", err));
+          const adminEmailVars = { ticket_no: ticketNo, subject: title, created_by_email: user?.email || 'Customer' };
+          const adminEmailFallback = {
+            subject: `New ticket ${ticketNo} has been created by ${user?.email || 'Customer'} - ${title}`,
+            body: `Hello Admin,\n\nA new ticket has been created:\n\nTicket No: ${ticketNo}\nSubject: ${title}\nCreated By: ${user?.email || 'Customer'}\n\nPlease review the ticket in the admin portal.`
+          };
+          getRenderedEmail('NEW_TICKET_ADMIN', adminEmailVars, adminEmailFallback).then(({ subject, body }) => {
+            adminEmails.forEach(email => {
+              supabase.functions.invoke('send-email', {
+                body: { to: email, subject, body, ticket_id: ticket.id }
+              }).catch(err => console.error("Error sending email to admin:", err));
+            });
           });
         }
-        
+
         // Send email to the customer
         if (user?.email) {
-          supabase.functions.invoke('send-email', {
-            body: {
-              to: user.email,
-              subject: `Your ticket ${ticketNo} has been created`,
-              body: `Hello,\n\nYour ticket ${ticketNo} has been created and is being reviewed.\n\nSubject: ${title}\n\nWe will get back to you shortly.`,
-              ticket_id: ticket.id
-            }
-          }).catch(err => console.error("Error sending email to customer:", err));
+          const customerEmailVars = {
+            ticket_no: ticketNo,
+            subject: title,
+            start_date: createdAt.toLocaleDateString(),
+            end_date: slaDueDate.toLocaleDateString(),
+            priority: priorityName
+          };
+          const customerEmailFallback = {
+            subject: `Your ticket ${ticketNo} has been created`,
+            body: `Hello,\n\nYour ticket ${ticketNo} has been created and is being reviewed.\n\nSubject: ${title}\n\nWe will get back to you shortly.`
+          };
+          getRenderedEmail('NEW_TICKET_CUSTOMER', customerEmailVars, customerEmailFallback).then(({ subject, body }) => {
+            supabase.functions.invoke('send-email', {
+              body: { to: user.email, subject, body, ticket_id: ticket.id }
+            }).catch(err => console.error("Error sending email to customer:", err));
+          });
         }
       } catch (notifErr) {
         console.error("Could not post system alerts / send emails", notifErr);
@@ -328,11 +411,13 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
         if (answersError) throw answersError;
       }
 
-      // 3. Recommendation Matching
-      const { data: rules } = await supabase
-        .from('recommendation_rules')
-        .select('*')
-        .eq('category_id', selectedCategoryId);
+      // 3. Recommendation Matching (skipped when no category was selected)
+      const { data: rules } = selectedCategoryId
+        ? await supabase
+            .from('recommendation_rules')
+            .select('*')
+            .eq('category_id', selectedCategoryId)
+        : { data: null };
 
       const matchedRule = rules?.find(rule => {
         const criteria = rule.match_criteria as Record<string, string>;
@@ -409,9 +494,17 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
             onSelect={(id, name) => {
               setSelectedCategoryId(id);
               setSelectedCategoryName(name);
+              setSkippedDiagnostics(false);
               setCurrentStep(3);
             }}
             onBack={() => setCurrentStep(1)}
+            onSkip={() => {
+              setSelectedCategoryId('');
+              setSelectedCategoryName('');
+              setAnswers({});
+              setSkippedDiagnostics(true);
+              setCurrentStep(4);
+            }}
           />
         );
       case 3:
@@ -482,6 +575,10 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
               setTitle={setTitle}
               description={description}
               setDescription={setDescription}
+              attachments={attachments}
+              onAddAttachments={handleAddAttachments}
+              onRemoveAttachment={handleRemoveAttachment}
+              attachmentError={attachmentError}
               onBack={() => setCurrentStep(4)}
               onSubmit={handleSubmit}
               isSubmitting={isSubmitting}

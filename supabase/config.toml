@@ -21,6 +21,11 @@ entrypoint = "./functions/auto-comment-tickets/index.ts"
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/auto-comment-tickets/*.html" ]
 
+[functions.daily-report]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/daily-report/index.ts"
+
 [functions.chat-assistant]
 enabled = true
 verify_jwt = false

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useTickets, useTicketsPaginated, useTicketDetails } from '../hooks/useTickets';
 import { useAuth } from '../context/AuthContext';
@@ -26,8 +27,10 @@ import {
   ShieldAlert,
   MoreHorizontal,
   Columns,
-  Check
+  Check,
+  Download
 } from 'lucide-react';
+import { TicketCreationWizard } from '../components/ticket-wizard/TicketCreationWizard';
 
 const COLUMN_DEFS: { key: string; label: string; adminOnly?: boolean }[] = [
   { key: 'priority', label: 'Priority' },
@@ -38,7 +41,18 @@ const COLUMN_DEFS: { key: string; label: string; adminOnly?: boolean }[] = [
   { key: 'created_at', label: 'Created' },
   { key: 'sla_due_date', label: 'SLA Due' },
 ];
-import { TicketCreationWizard } from '../components/ticket-wizard/TicketCreationWizard';
+
+// col.label above is only an English fallback (used for CSV/debug); the dropdown renders
+// via these i18n keys so the "Columns" menu follows the active language.
+const COLUMN_LABEL_KEYS: Record<string, string> = {
+  priority: 'tickets.priority',
+  status_code: 'tickets.status',
+  customer_name: 'tickets.customer',
+  assigned_to_name: 'tickets.assignedTo',
+  legacy_assigned_to: 'tickets.legacyAssignee',
+  created_at: 'tickets.created',
+  sla_due_date: 'tickets.slaDue',
+};
 
 interface TicketsProps {
   isEmbedded?: boolean;
@@ -52,7 +66,7 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
   const navigate = useNavigate();
   const { user } = useAuth();
   const { tenants } = useTenant();
-  const { createTicket, updateTicket } = useTickets();
+  const { createTicket, updateTicket, tickets: allTicketsForExport } = useTickets();
   const [page, setPage] = useState(1);
   const limit = 50;
   const [customerIdFilter, setCustomerIdFilter] = useState<string | null>(searchParams.get('customerId') || null);
@@ -73,7 +87,8 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
 
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [viewFilter, setViewFilter] = useState<string>(
-    ['SUPPORT_ENGINEER', 'TEAM_LEAD'].includes(user?.role_name?.toUpperCase() || '') ? 'assigned' : 'all'
+    searchParams.get('status') ||
+    (['SUPPORT_ENGINEER', 'TEAM_LEAD'].includes(user?.role_name?.toUpperCase() || '') ? 'assigned' : 'all')
   );
   const [productFilter, setProductFilter] = useState<string>('all');
   const [customerFilter, setCustomerFilter] = useState<string>(searchParams.get('customer') || 'all');
@@ -240,7 +255,8 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
   
   const statusViews = [
     { id: 'new', name: 'New', count: tickets.filter(t => t.status_code === 'NEW').length },
-    { id: 'in_progress', name: 'In progress', count: tickets.filter(t => t.status_code === 'INVESTIGATION').length },
+    { id: 'in_progress', name: 'Support Action', count: tickets.filter(t => t.status_code === 'INVESTIGATION').length },
+    { id: 'development_action', name: 'Development Action', count: tickets.filter(t => t.status_code === 'DEVELOPMENT_ACTION').length },
     ...(isAdmin ? [{ id: 'pending_approval', name: 'Pending approval', count: tickets.filter(t => t.status_code === 'RESOLVED_PENDING_APPROVAL').length }] : []),
     { id: 'approved', name: 'Approved', count: tickets.filter(t => t.status_code === 'APPROVED').length },
     { id: 'closed', name: 'Closed', count: tickets.filter(t => t.status_code === 'CLOSED').length },
@@ -266,6 +282,7 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
     let matchesView = true;
     if (viewFilter === 'new') matchesView = ticket.status_code === 'NEW';
     if (viewFilter === 'in_progress') matchesView = ticket.status_code === 'INVESTIGATION';
+    if (viewFilter === 'development_action') matchesView = ticket.status_code === 'DEVELOPMENT_ACTION';
     if (viewFilter === 'pending_approval') matchesView = ticket.status_code === 'RESOLVED_PENDING_APPROVAL';
     if (viewFilter === 'approved') matchesView = ticket.status_code === 'APPROVED';
     if (viewFilter === 'closed') matchesView = ticket.status_code === 'CLOSED';
@@ -329,6 +346,67 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
     return 0;
   });
 
+  const handleExportToExcel = () => {
+    // Export respects all active filters, but against the FULL unpaginated ticket set
+    // (not just the current 50-row page), so the export always contains every matching ticket.
+    const searchLower = searchDebounced.toLowerCase();
+    const exportRows = allTicketsForExport.filter((ticket: any) => {
+      let matchesView = true;
+      if (viewFilter === 'new') matchesView = ticket.status_code === 'NEW';
+      if (viewFilter === 'in_progress') matchesView = ticket.status_code === 'INVESTIGATION';
+      if (viewFilter === 'development_action') matchesView = ticket.status_code === 'DEVELOPMENT_ACTION';
+      if (viewFilter === 'pending_approval') matchesView = ticket.status_code === 'RESOLVED_PENDING_APPROVAL';
+      if (viewFilter === 'approved') matchesView = ticket.status_code === 'APPROVED';
+      if (viewFilter === 'closed') matchesView = ticket.status_code === 'CLOSED';
+      if (viewFilter === 'assigned') matchesView = ticket.assigned_to === user?.id;
+      if (viewFilter === 'high_priority') matchesView = ['high', 'urgent'].includes((ticket.priority || '').toLowerCase());
+
+      const matchesProduct = productFilter === 'all' || ticket.product_name === productFilter;
+      const matchesCustomer = customerFilter === 'all' || ticket.customer_name === customerFilter;
+      const matchesEngineer = engineerFilter === 'all' || ticket.assigned_to === engineerFilter;
+
+      let matchesDate = true;
+      if (dateRange !== 'all') {
+        const ticketDate = new Date(ticket.created_at);
+        if (dateRange === '7days') {
+          const sevenDaysAgo = new Date();
+          sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+          matchesDate = ticketDate >= sevenDaysAgo;
+        } else if (dateRange === '30days') {
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+          matchesDate = ticketDate >= thirtyDaysAgo;
+        }
+      }
+
+      let matchesPriority = true;
+      if (priorityFilter !== 'all') matchesPriority = (ticket.priority || '').toLowerCase() === priorityFilter;
+
+      const matchesSearch = !searchLower ||
+        ticket.title?.toLowerCase().includes(searchLower) ||
+        ticket.description?.toLowerCase().includes(searchLower) ||
+        ticket.ticket_no?.toLowerCase().includes(searchLower);
+
+      return matchesView && matchesProduct && matchesCustomer && matchesDate && matchesPriority && matchesEngineer && matchesSearch;
+    });
+
+    const exportData = exportRows.map((ticket: any) => ({
+      'Ticket #': ticket.ticket_no || '',
+      'Subject': ticket.title,
+      'Priority': ticket.priority,
+      'Status': ticket.status_code || ticket.status,
+      'Customer': ticket.customer_name || '',
+      'Assigned To': ticket.assigned_to_name || 'Unassigned',
+      'Legacy Assignee': ticket.legacy_assigned_to || '',
+      'Created': new Date(ticket.created_at).toLocaleDateString(),
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Tickets');
+    XLSX.writeFile(workbook, `Tickets_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
   const handleOpenCreateModal = () => {
     setSearchParams({ action: 'create' });
   };
@@ -365,12 +443,17 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
       colorClass = 'bg-purple-50 text-purple-700 border-purple-200'; 
       text = 'Assigned'; 
     }
-    else if (s === 'INVESTIGATION' || s === 'IN_PROGRESS') { 
-      Icon = PlayCircle; 
-      colorClass = 'bg-amber-50 text-amber-700 border-amber-200'; 
-      text = 'In Progress'; 
+    else if (s === 'INVESTIGATION' || s === 'IN_PROGRESS') {
+      Icon = PlayCircle;
+      colorClass = 'bg-amber-50 text-amber-700 border-amber-200';
+      text = 'Support Action';
     }
-    else if (s === 'PENDING_CUSTOMER') { 
+    else if (s === 'DEVELOPMENT_ACTION') {
+      Icon = PlayCircle;
+      colorClass = 'bg-indigo-50 text-indigo-700 border-indigo-200';
+      text = 'Development Action';
+    }
+    else if (s === 'PENDING_CUSTOMER') {
       Icon = Clock; 
       colorClass = 'bg-orange-50 text-orange-700 border-orange-200'; 
       text = 'Pending Customer'; 
@@ -408,7 +491,7 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
   };
 
   const renderSlaBadge = (ticket: Ticket) => {
-    return <span className="text-slate-400 italic">Not set</span>;
+    return <span className="text-slate-400 italic">{t('tickets.notSet')}</span>;
   };
 
   const handleSort = (column: SortColumn) => {
@@ -687,23 +770,23 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
               <button
                 onClick={() => setIsColumnsMenuOpen(prev => !prev)}
                 className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-slate-50 whitespace-nowrap"
-                title="Show/hide columns"
+                title={t('tickets.showHideColumns')}
               >
                 <Columns size={14} className="text-slate-400" />
-                <span>Columns</span>
+                <span>{t('tickets.columns')}</span>
                 <ChevronDown size={14} className="text-slate-400 shrink-0" />
               </button>
 
               {isColumnsMenuOpen && (
                 <div className="absolute top-full right-0 mt-1 w-52 bg-white border border-slate-200 rounded-lg shadow-lg py-1.5 z-50">
-                  <div className="px-3 pb-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Toggle columns</div>
+                  <div className="px-3 pb-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">{t('tickets.toggleColumns')}</div>
                   {COLUMN_DEFS.filter(c => !c.adminOnly || isAdmin).map(col => (
                     <button
                       key={col.key}
                       onClick={() => toggleColumn(col.key)}
                       className="w-full flex items-center justify-between px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
                     >
-                      <span>{col.label}</span>
+                      <span>{t(COLUMN_LABEL_KEYS[col.key] || col.key)}</span>
                       <div className={`w-4 h-4 rounded flex items-center justify-center border ${visibleColumns[col.key] ? 'bg-[#3B82F6] border-[#3B82F6] text-white' : 'border-slate-300'}`}>
                         {visibleColumns[col.key] && <Check size={11} />}
                       </div>
@@ -712,6 +795,15 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
                 </div>
               )}
             </div>
+
+            <button
+              onClick={handleExportToExcel}
+              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+              title={t('tickets.exportToExcel')}
+            >
+              <Download size={14} className="text-slate-400" />
+              <span>{t('tickets.export')}</span>
+            </button>
 
             {!isEmbedded && (
               <button
@@ -749,35 +841,35 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
                     </th>
                   )}
                   <th className={`px-6 ${cellPadding} text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors relative group/th`} style={{ width: colWidths['title'] ? `${colWidths['title']}px` : undefined }} onClick={() => handleSort('title')}>
-                    Subject <SortIcon column="title" />
+                    {t('tickets.subject')} <SortIcon column="title" />
                     <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-slate-300/60 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'title'); }} />
                   </th>
                   {visibleColumns['priority'] && <th className={`px-6 ${cellPadding} text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors relative group/th`} style={{ width: colWidths['priority'] ? `${colWidths['priority']}px` : '112px' }} onClick={() => handleSort('priority')}>
-                    Priority <SortIcon column="priority" />
+                    {t('tickets.priority')} <SortIcon column="priority" />
                     <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-slate-300/60 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'priority'); }} />
                   </th>}
                   {visibleColumns['status_code'] && <th className={`px-6 ${cellPadding} text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors relative group/th`} style={{ width: colWidths['status_code'] ? `${colWidths['status_code']}px` : '160px' }} onClick={() => handleSort('status_code')}>
-                    Status <SortIcon column="status_code" />
+                    {t('tickets.status')} <SortIcon column="status_code" />
                     <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-slate-300/60 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'status_code'); }} />
                   </th>}
                   {visibleColumns['customer_name'] && <th className={`px-6 ${cellPadding} text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors relative group/th`} style={{ width: colWidths['customer_name'] ? `${colWidths['customer_name']}px` : '144px' }} onClick={() => handleSort('customer_name')}>
-                    Customer <SortIcon column="customer_name" />
+                    {t('tickets.customer')} <SortIcon column="customer_name" />
                     <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-slate-300/60 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'customer_name'); }} />
                   </th>}
                   {isAdmin && visibleColumns['assigned_to_name'] && <th className={`px-6 ${cellPadding} text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors relative group/th`} style={{ width: colWidths['assigned_to_name'] ? `${colWidths['assigned_to_name']}px` : '192px' }} onClick={() => handleSort('assigned_to_name')}>
-                    Assigned To <SortIcon column="assigned_to_name" />
+                    {t('tickets.assignedTo')} <SortIcon column="assigned_to_name" />
                     <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-slate-300/60 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'assigned_to_name'); }} />
                   </th>}
                   {isAdmin && visibleColumns['legacy_assigned_to'] && <th className={`px-6 ${cellPadding} text-xs font-semibold text-slate-500 uppercase tracking-wider relative group/th`} style={{ width: colWidths['legacy_assigned_to'] ? `${colWidths['legacy_assigned_to']}px` : '160px' }}>
-                    Legacy Assignee
+                    {t('tickets.legacyAssignee')}
                     <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-slate-300/60 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'legacy_assigned_to'); }} />
                   </th>}
                   {visibleColumns['created_at'] && <th className={`px-6 ${cellPadding} text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors relative group/th`} style={{ width: colWidths['created_at'] ? `${colWidths['created_at']}px` : '128px' }} onClick={() => handleSort('created_at')}>
-                    Created <SortIcon column="created_at" />
+                    {t('tickets.created')} <SortIcon column="created_at" />
                     <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-slate-300/60 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'created_at'); }} />
                   </th>}
                   {visibleColumns['sla_due_date'] && <th className={`px-6 ${cellPadding} text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors relative group/th`} style={{ width: colWidths['sla_due_date'] ? `${colWidths['sla_due_date']}px` : '144px' }} onClick={() => handleSort('sla_due_date')}>
-                    SLA Due <SortIcon column="sla_due_date" />
+                    {t('tickets.slaDue')} <SortIcon column="sla_due_date" />
                     <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-slate-300/60 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'sla_due_date'); }} />
                   </th>}
                   <th className={`px-6 ${cellPadding} text-xs font-semibold text-slate-500 uppercase tracking-wider text-right relative group/th`} style={{ width: colWidths['action'] ? `${colWidths['action']}px` : '80px' }}>
@@ -787,11 +879,11 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={visibleColSpan} className={`px-6 py-12 ${cellPadding} text-center text-slate-400`}>Loading tickets...</td>
+                    <td colSpan={visibleColSpan} className={`px-6 py-12 ${cellPadding} text-center text-slate-400`}>{t('tickets.loading')}</td>
                   </tr>
                 ) : sortedTickets.length === 0 ? (
                   <tr>
-                    <td colSpan={visibleColSpan} className={`px-6 py-12 ${cellPadding} text-center text-slate-400`}>No tickets found.</td>
+                    <td colSpan={visibleColSpan} className={`px-6 py-12 ${cellPadding} text-center text-slate-400`}>{t('tickets.noTickets')}</td>
                   </tr>
                 ) : (
                   sortedTickets.map(ticket => (
