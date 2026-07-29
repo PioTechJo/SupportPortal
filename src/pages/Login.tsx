@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
-import { Shield, Building, User, Mail, Database, AlertCircle, KeyRound, ArrowRight, Globe } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { Shield, Building, User, Mail, Database, AlertCircle, KeyRound, ArrowRight, Globe, CheckCircle2 } from 'lucide-react';
 import logoImg from '../assets/pio-tech-logo.png';
 
 export const Login: React.FC = () => {
@@ -13,6 +14,33 @@ export const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [mode, setMode] = useState<'login' | 'forgot'>('login');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSubmitting, setForgotSubmitting] = useState(false);
+  const [forgotDone, setForgotDone] = useState(false);
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail) return;
+    setForgotSubmitting(true);
+    try {
+      await supabase.functions.invoke('forgot-password', { body: { email: forgotEmail } });
+    } catch (err) {
+      console.error('Forgot password request failed:', err);
+      // Intentionally still show the generic success state below — this endpoint
+      // never reveals whether the email exists or what went wrong.
+    } finally {
+      setForgotSubmitting(false);
+      setForgotDone(true);
+    }
+  };
+
+  const resetForgotForm = () => {
+    setMode('login');
+    setForgotEmail('');
+    setForgotDone(false);
+  };
 
   const toggleLanguage = async () => {
     const currentLang = i18n.language?.startsWith('ar') ? 'ar' : 'en';
@@ -92,9 +120,70 @@ export const Login: React.FC = () => {
 
           <div className="py-8 px-8">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">
-              {t('login.signInToPortal')}
+              {mode === 'login' ? t('login.signInToPortal') : t('login.forgotPasswordTitle')}
             </p>
 
+            {mode === 'forgot' ? (
+              forgotDone ? (
+                <div className="space-y-5">
+                  <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3.5 rounded-lg text-sm flex items-start gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>{t('login.forgotPasswordSent')}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={resetForgotForm}
+                    className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg text-sm transition-all shadow-sm cursor-pointer"
+                  >
+                    {t('login.backToLogin')}
+                  </button>
+                </div>
+              ) : (
+                <form className="space-y-5" onSubmit={handleForgotPassword}>
+                  <p className="text-sm text-slate-500">{t('login.forgotPasswordDescription')}</p>
+                  <div>
+                    <label htmlFor="forgot-email" className="block text-xs uppercase font-bold tracking-wider text-slate-500">
+                      {t('login.emailAddress')}
+                    </label>
+                    <div className="mt-2 relative rounded-md shadow-xs">
+                      <div className="absolute inset-y-0 start-0 ps-3 flex items-center pointer-events-none text-slate-400">
+                        <Mail size={15} />
+                      </div>
+                      <input
+                        id="forgot-email"
+                        type="email"
+                        required
+                        autoFocus
+                        value={forgotEmail}
+                        onChange={(e) => setForgotEmail(e.target.value)}
+                        placeholder={t('login.emailPlaceholder')}
+                        className="block w-full ps-9 pe-3 py-2.5 bg-slate-50 text-slate-900 rounded-lg border border-slate-300 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent text-sm transition"
+                      />
+                    </div>
+                  </div>
+                  <div className="pt-2 space-y-2">
+                    <button
+                      type="submit"
+                      disabled={forgotSubmitting}
+                      className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg text-sm transition-all shadow-sm cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+                    >
+                      {forgotSubmitting ? (
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      ) : (
+                        <span>{t('login.sendResetLink')}</span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={resetForgotForm}
+                      className="w-full py-2 px-4 text-slate-500 hover:text-slate-700 font-medium rounded-lg text-sm transition-colors"
+                    >
+                      {t('login.backToLogin')}
+                    </button>
+                  </div>
+                </form>
+              )
+            ) : (
             <form className="space-y-5" onSubmit={handleLogin}>
               {error && (
                 <div id="login-error-alert" className="bg-rose-50 border border-rose-200 text-rose-800 p-3.5 rounded-lg text-xs flex flex-col gap-2.5">
@@ -128,9 +217,18 @@ export const Login: React.FC = () => {
               </div>
 
               <div>
-                <label htmlFor="password" className="block text-xs uppercase font-bold tracking-wider text-slate-500">
-                  {t('login.password')}
-                </label>
+                <div className="flex items-center justify-between">
+                  <label htmlFor="password" className="block text-xs uppercase font-bold tracking-wider text-slate-500">
+                    {t('login.password')}
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setMode('forgot')}
+                    className="text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors"
+                  >
+                    {t('login.forgotPasswordLink')}
+                  </button>
+                </div>
                 <div className="mt-2 relative rounded-md shadow-xs">
                   <div className="absolute inset-y-0 start-0 ps-3 flex items-center pointer-events-none text-slate-400">
                     <KeyRound size={15} />
@@ -167,6 +265,7 @@ export const Login: React.FC = () => {
                 </button>
               </div>
             </form>
+            )}
           </div>
         </div>
       </div>

@@ -15,6 +15,16 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/daily-ticket-update/index.ts"
 
+[functions.send-password-reset]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/send-password-reset/index.ts"
+
+[functions.forgot-password]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/forgot-password/index.ts"
+
 [functions.daily-report]
 enabled = true
 verify_jwt = false

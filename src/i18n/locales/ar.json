@@ -10,7 +10,13 @@
     "verifying": "جاري التحقق من البيانات...",
     "errorValidEmail": "يرجى تقديم عنوان بريد إلكتروني صالح للشركة.",
     "errorAuthFailed": "فشلت المصادقة. يرجى التحقق من بيانات الدخول.",
-    "language": "English"
+    "language": "English",
+    "forgotPasswordLink": "نسيت كلمة المرور؟",
+    "forgotPasswordTitle": "إعادة تعيين كلمة المرور",
+    "forgotPasswordDescription": "أدخل بريدك الإلكتروني وسنرسل لك كلمة مرور جديدة.",
+    "forgotPasswordSent": "إذا كان هناك حساب مرتبط بهذا البريد، تم إرسال كلمة مرور جديدة إليه.",
+    "sendResetLink": "إرسال كلمة مرور جديدة",
+    "backToLogin": "العودة لتسجيل الدخول"
   },
   "overview": {
     "welcome": "أهلاً، {{name}}!",

@@ -10,7 +10,13 @@
     "verifying": "Verifying Credentials...",
     "errorValidEmail": "Please provide a valid corporate email address.",
     "errorAuthFailed": "Authentication failed. Please verify credentials.",
-    "language": "العربية"
+    "language": "العربية",
+    "forgotPasswordLink": "Forgot password?",
+    "forgotPasswordTitle": "Reset Your Password",
+    "forgotPasswordDescription": "Enter your account email and we'll send you a new password.",
+    "forgotPasswordSent": "If an account exists for that email, a new password has been sent to it.",
+    "sendResetLink": "Send New Password",
+    "backToLogin": "Back to Login"
   },
   "overview": {
     "welcome": "Welcome, {{name}}!",

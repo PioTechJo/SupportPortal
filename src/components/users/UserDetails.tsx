@@ -38,14 +38,21 @@ export const UserDetails: React.FC<UserDetailsProps> = ({ user, onBack, onRefres
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const [resettingPassword, setResettingPassword] = useState(false);
+
   const handleResetPassword = async () => {
-    if (!window.confirm(`Send password reset email to ${user.email}?`)) return;
+    if (!window.confirm(`Reset ${user.email}'s password and email them the new one?`)) return;
+    setResettingPassword(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(user.email);
+      const { error } = await supabase.functions.invoke('send-password-reset', {
+        body: { userId: user.id, email: user.email },
+      });
       if (error) throw error;
-      alert('Password reset email sent successfully.');
+      alert('Password reset — a new password has been emailed to the user.');
     } catch (error: any) {
-      alert(`Failed to send reset email: ${error.message}`);
+      alert(`Failed to reset password: ${error.message}`);
+    } finally {
+      setResettingPassword(false);
     }
   };
 
@@ -275,13 +282,15 @@ export const UserDetails: React.FC<UserDetailsProps> = ({ user, onBack, onRefres
                     <div className="p-5 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white">
                       <div>
                         <div className="font-bold text-slate-800 mb-1">Send Password Reset</div>
-                        <div className="text-sm text-slate-500">Trigger the standard Supabase email flow containing a secure reset link.</div>
+                        <div className="text-sm text-slate-500">Generates a new password, sets it on the account, and emails it to the user.</div>
                       </div>
-                      <button 
+                      <button
                         onClick={handleResetPassword}
-                        className="shrink-0 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-bold shadow-sm transition-colors flex items-center gap-2"
+                        disabled={resettingPassword}
+                        className="shrink-0 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-bold shadow-sm transition-colors flex items-center gap-2 disabled:opacity-50"
                       >
-                        <Mail size={16} /> Send Reset Email
+                        {resettingPassword ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-slate-500" /> : <Mail size={16} />}
+                        Send Reset Email
                       </button>
                     </div>
 
