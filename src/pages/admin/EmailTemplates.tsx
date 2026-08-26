@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Mail, Save, GripVertical, AlertCircle } from 'lucide-react';
+import { Mail, Save, GripVertical, AlertCircle, Users } from 'lucide-react';
 
 interface EmailTemplateRow {
   id: string;
   trigger_key: string;
   trigger_label: string;
   available_variables: { key: string; label: string }[];
+  available_recipients: { key: string; label: string }[];
+  recipient_roles: string[];
   subject_template: string;
   body_template: string;
 }
@@ -16,9 +18,13 @@ export const EmailTemplates: React.FC = () => {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
+  const [recipientRoles, setRecipientRoles] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  const [supportGroupEmail, setSupportGroupEmail] = useState('');
+  const [savingSupportGroup, setSavingSupportGroup] = useState(false);
 
   const subjectRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
@@ -27,22 +33,45 @@ export const EmailTemplates: React.FC = () => {
   useEffect(() => {
     const fetchTemplates = async () => {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('email_templates')
-        .select('*')
-        .order('trigger_label');
+      const [{ data, error }, { data: settingRow }] = await Promise.all([
+        supabase.from('email_templates').select('*').order('trigger_label'),
+        supabase.from('system_settings').select('setting_value').eq('setting_key', 'support_group_email').maybeSingle(),
+      ]);
       if (!error && data) {
         setTemplates(data as EmailTemplateRow[]);
         if (data.length > 0) {
           setSelectedKey(data[0].trigger_key);
           setSubject(data[0].subject_template);
           setBody(data[0].body_template);
+          setRecipientRoles(data[0].recipient_roles || []);
         }
       }
+      if (settingRow?.setting_value != null) setSupportGroupEmail(settingRow.setting_value);
       setLoading(false);
     };
     fetchTemplates();
   }, []);
+
+  const handleSaveSupportGroupEmail = async () => {
+    setSavingSupportGroup(true);
+    setMessage(null);
+    try {
+      const { error } = await supabase
+        .from('system_settings')
+        .upsert(
+          { setting_key: 'support_group_email', setting_value: supportGroupEmail.trim(), updated_at: new Date().toISOString() },
+          { onConflict: 'setting_key' }
+        );
+      if (error) throw error;
+      setMessage({ text: 'Support Group email saved', type: 'success' });
+      setTimeout(() => setMessage(null), 3000);
+    } catch (err) {
+      console.error('Error saving support group email:', err);
+      setMessage({ text: 'Failed to save Support Group email', type: 'error' });
+    } finally {
+      setSavingSupportGroup(false);
+    }
+  };
 
   const selectedTemplate = templates.find(t => t.trigger_key === selectedKey);
 
@@ -52,7 +81,14 @@ export const EmailTemplates: React.FC = () => {
     setSelectedKey(key);
     setSubject(tpl.subject_template);
     setBody(tpl.body_template);
+    setRecipientRoles(tpl.recipient_roles || []);
     setMessage(null);
+  };
+
+  const toggleRecipientRole = (key: string) => {
+    setRecipientRoles(prev =>
+      prev.includes(key) ? prev.filter(r => r !== key) : [...prev, key]
+    );
   };
 
   const handleSave = async () => {
@@ -62,13 +98,18 @@ export const EmailTemplates: React.FC = () => {
     try {
       const { error } = await supabase
         .from('email_templates')
-        .update({ subject_template: subject, body_template: body, updated_at: new Date().toISOString() })
+        .update({
+          subject_template: subject,
+          body_template: body,
+          recipient_roles: recipientRoles,
+          updated_at: new Date().toISOString()
+        })
         .eq('trigger_key', selectedTemplate.trigger_key);
       if (error) throw error;
 
       setTemplates(prev => prev.map(t =>
         t.trigger_key === selectedTemplate.trigger_key
-          ? { ...t, subject_template: subject, body_template: body }
+          ? { ...t, subject_template: subject, body_template: body, recipient_roles: recipientRoles }
           : t
       ));
       setMessage({ text: 'Template saved successfully', type: 'success' });
@@ -137,6 +178,28 @@ export const EmailTemplates: React.FC = () => {
         </p>
       </div>
 
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-6 flex flex-col sm:flex-row sm:items-end gap-3">
+        <div className="flex-1">
+          <label className="block text-sm font-semibold text-slate-700 mb-1.5">Support Group Email</label>
+          <p className="text-xs text-slate-500 mb-2">Shared mailbox used by the "Support Group" recipient option below. Comma-separated for multiple addresses.</p>
+          <input
+            type="text"
+            value={supportGroupEmail}
+            onChange={(e) => setSupportGroupEmail(e.target.value)}
+            placeholder="support.team@pio-tech.com"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-[#f97316] focus:border-[#f97316]"
+          />
+        </div>
+        <button
+          onClick={handleSaveSupportGroupEmail}
+          disabled={savingSupportGroup}
+          className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 shrink-0"
+        >
+          {savingSupportGroup ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> : <Save size={16} />}
+          Save
+        </button>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {/* Trigger list */}
         <div className="md:col-span-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -174,6 +237,36 @@ export const EmailTemplates: React.FC = () => {
             <p className="text-slate-400 text-sm">Select a trigger point on the left.</p>
           ) : (
             <>
+              {/* Recipients */}
+              <div>
+                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <Users size={13} /> Send To
+                </div>
+                {selectedTemplate.available_recipients.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic">No recipient options configured for this trigger.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-3">
+                    {selectedTemplate.available_recipients.map(r => (
+                      <label
+                        key={r.key}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 cursor-pointer hover:bg-slate-100 transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={recipientRoles.includes(r.key)}
+                          onChange={() => toggleRecipientRole(r.key)}
+                          className="rounded border-slate-300 text-[#f97316] focus:ring-[#f97316]"
+                        />
+                        {r.label}
+                      </label>
+                    ))}
+                  </div>
+                )}
+                {recipientRoles.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1.5">No recipients selected — this notification won't be sent to anyone.</p>
+                )}
+              </div>
+
               {/* Variable chips */}
               <div>
                 <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">

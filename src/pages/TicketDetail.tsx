@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
-import { getRenderedEmail } from "../lib/emailTemplates";
+import { getEmailDispatch } from "../lib/emailTemplates";
 import {
   ArrowLeft,
   Clock,
@@ -686,22 +686,22 @@ export const TicketDetail: React.FC = () => {
           if (selectedDev && selectedDev.id) {
             (async () => {
               try {
-                const { data: developerEmail, error: emailFetchError } = await supabase.rpc('get_user_email', { p_user_id: selectedDev.id });
-                  
-                if (!emailFetchError && developerEmail) {
-                  const tktNo = ticket?.ticket_no || ticket?.id?.substring(0, 8).toUpperCase();
-                  const { subject, body } = await getRenderedEmail(
-                    'ESCALATION_DEVELOPER',
-                    { ticket_no: tktNo, subject: ticket?.subject || '', escalation_note: escalationNote },
-                    {
-                      subject: `You have been assigned an escalation for ticket ${tktNo}: ${ticket?.subject || ''}`,
-                      body: `You have been assigned an escalation for ticket ${tktNo}: ${ticket?.subject || ''}.\n\nEscalation note: ${escalationNote}`
-                    }
-                  );
+                const tktNo = ticket?.ticket_no || ticket?.id?.substring(0, 8).toUpperCase();
+                const { subject, body, recipientEmails } = await getEmailDispatch(
+                  'ESCALATION_DEVELOPER',
+                  { ticket_no: tktNo, subject: ticket?.subject || '', escalation_note: escalationNote },
+                  { developerId: selectedDev.id, createdById: ticket?.created_by },
+                  {
+                    subject: `You have been assigned an escalation for ticket ${tktNo}: ${ticket?.subject || ''}`,
+                    body: `You have been assigned an escalation for ticket ${tktNo}: ${ticket?.subject || ''}.\n\nEscalation note: ${escalationNote}`,
+                    defaultRoles: ['developer']
+                  }
+                );
+                recipientEmails.forEach(email => {
                   supabase.functions.invoke('send-email', {
-                    body: { to: developerEmail, subject, body, ticket_id: ticket?.id }
+                    body: { to: email, subject, body, ticket_id: ticket?.id }
                   }).catch(err => console.error("Error invoking send-email for escalation:", err));
-                }
+                });
               } catch (emailErr) {
                 console.error("Failed to fetch developer email or send notification:", emailErr);
               }
@@ -1058,20 +1058,24 @@ export const TicketDetail: React.FC = () => {
 
       const assignedEng = engineers.find((e) => e.id === engineerId);
 
-      // Send email to Engineer
+      // Send email to Engineer (and any other configured recipients)
       if (assignedEng?.email) {
         try {
-          const { subject, body } = await getRenderedEmail(
+          const { subject, body, recipientEmails } = await getEmailDispatch(
             'TICKET_ASSIGNED_ENGINEER',
             { ticket_no: ticketNo, subject: ticket.subject, engineer_name: assignedEng.full_name || 'Engineer' },
+            { assigneeId: engineerId, createdById: ticket.created_by },
             {
               subject: `You have been assigned to ticket ${ticketNo}: ${ticket.subject}`,
-              body: `Hello ${assignedEng.full_name || 'Engineer'},\n\nYou have been assigned to ticket ${ticketNo}.\n\nSubject: ${ticket.subject}\n\nPlease review it in the Support Portal.`
+              body: `Hello ${assignedEng.full_name || 'Engineer'},\n\nYou have been assigned to ticket ${ticketNo}.\n\nSubject: ${ticket.subject}\n\nPlease review it in the Support Portal.`,
+              defaultRoles: ['assignee']
             }
           );
-          supabase.functions.invoke('send-email', {
-            body: { to: assignedEng.email, subject, body, ticket_id: ticket.id }
-          }).catch(err => console.error("Error sending email to engineer:", err));
+          recipientEmails.forEach(email => {
+            supabase.functions.invoke('send-email', {
+              body: { to: email, subject, body, ticket_id: ticket.id }
+            }).catch(err => console.error("Error sending email to engineer:", err));
+          });
         } catch (emailErr) {
           console.error("Unexpected error invoking send-email for engineer:", emailErr);
         }
@@ -1189,30 +1193,29 @@ export const TicketDetail: React.FC = () => {
             console.error("Failed to insert notifications for admins:", notifError);
           }
           
-          // Send email to Admins
-          adminIds.forEach((admin: any) => {
-            (async () => {
-              try {
-                const { data: adminEmail } = await supabase.rpc('get_user_email', { p_user_id: admin.id });
-                if (adminEmail) {
-                  const tktNo = ticket.ticket_no || ticket.id.substring(0, 8).toUpperCase();
-                  const { subject, body } = await getRenderedEmail(
-                    'RESOLVED_ADMIN',
-                    { ticket_no: tktNo, subject: ticket.subject, resolved_by_name: user?.full_name || 'an engineer' },
-                    {
-                      subject: `Ticket ${tktNo} is pending your approval`,
-                      body: `Ticket ${tktNo} has been resolved by ${user?.full_name || 'an engineer'} and is pending your approval.\n\nSubject: ${ticket.subject}`
-                    }
-                  );
-                  supabase.functions.invoke('send-email', {
-                    body: { to: adminEmail, subject, body, ticket_id: id }
-                  }).catch(err => console.error("Error sending email to admin:", err));
+          // Send email to Admins (and any other configured recipients)
+          (async () => {
+            try {
+              const tktNo = ticket.ticket_no || ticket.id.substring(0, 8).toUpperCase();
+              const { subject, body, recipientEmails } = await getEmailDispatch(
+                'RESOLVED_ADMIN',
+                { ticket_no: tktNo, subject: ticket.subject, resolved_by_name: user?.full_name || 'an engineer' },
+                { createdById: ticket.created_by, assigneeId: ticket.assigned_to },
+                {
+                  subject: `Ticket ${tktNo} is pending your approval`,
+                  body: `Ticket ${tktNo} has been resolved by ${user?.full_name || 'an engineer'} and is pending your approval.\n\nSubject: ${ticket.subject}`,
+                  defaultRoles: ['admin']
                 }
-              } catch (e) {
-                console.error("Error fetching email for admin:", e);
-              }
-            })();
-          });
+              );
+              recipientEmails.forEach(email => {
+                supabase.functions.invoke('send-email', {
+                  body: { to: email, subject, body, ticket_id: id }
+                }).catch(err => console.error("Error sending email to admin:", err));
+              });
+            } catch (e) {
+              console.error("Error dispatching resolved-admin email:", e);
+            }
+          })();
         }
       } catch (notifErr) {
         console.error("Unexpected error while sending notifications:", notifErr);
@@ -1280,24 +1283,25 @@ export const TicketDetail: React.FC = () => {
         change_notes: "Ticket closed by support team, pending client approval",
       });
 
-      // Send email to Customer
+      // Send email to Customer (and any other configured recipients)
       if (ticket.created_by) {
         try {
-          const { data: customerEmail } = await supabase.rpc('get_user_email', { p_user_id: ticket.created_by });
-          if (customerEmail) {
-            const ticketNo = ticket.ticket_no || ticket.id.substring(0, 8).toUpperCase();
-            const { subject, body } = await getRenderedEmail(
-              'CLOSED_CUSTOMER',
-              { ticket_no: ticketNo, subject: ticket.subject },
-              {
-                subject: `Your ticket ${ticketNo} has been closed`,
-                body: `Your ticket ${ticketNo} has been resolved and closed by our support team. Please review and approve the resolution at your convenience.\n\nSubject: ${ticket.subject}`
-              }
-            );
+          const ticketNo = ticket.ticket_no || ticket.id.substring(0, 8).toUpperCase();
+          const { subject, body, recipientEmails } = await getEmailDispatch(
+            'CLOSED_CUSTOMER',
+            { ticket_no: ticketNo, subject: ticket.subject },
+            { createdById: ticket.created_by, assigneeId: ticket.assigned_to },
+            {
+              subject: `Your ticket ${ticketNo} has been closed`,
+              body: `Your ticket ${ticketNo} has been resolved and closed by our support team. Please review and approve the resolution at your convenience.\n\nSubject: ${ticket.subject}`,
+              defaultRoles: ['customer']
+            }
+          );
+          recipientEmails.forEach(email => {
             supabase.functions.invoke('send-email', {
-              body: { to: customerEmail, subject, body, ticket_id: id }
+              body: { to: email, subject, body, ticket_id: id }
             }).catch(err => console.error("Error sending email to customer:", err));
-          }
+          });
         } catch (e) { console.error(e); }
       }
 
@@ -1357,24 +1361,25 @@ export const TicketDetail: React.FC = () => {
         change_notes: "Ticket resolution approved by client",
       });
 
-      // Send email to Engineer
+      // Send email to Engineer (and any other configured recipients)
       if (ticket.assigned_to) {
         try {
-          const { data: engineerEmail } = await supabase.rpc('get_user_email', { p_user_id: ticket.assigned_to });
-          if (engineerEmail) {
-            const ticketNo = ticket.ticket_no || ticket.id.substring(0, 8).toUpperCase();
-            const { subject, body } = await getRenderedEmail(
-              'APPROVED_ENGINEER',
-              { ticket_no: ticketNo, subject: ticket.subject },
-              {
-                subject: `Your resolution for ticket ${ticketNo} has been approved`,
-                body: `Your resolution for ticket ${ticketNo} has been approved.\n\nSubject: ${ticket.subject}`
-              }
-            );
+          const ticketNo = ticket.ticket_no || ticket.id.substring(0, 8).toUpperCase();
+          const { subject, body, recipientEmails } = await getEmailDispatch(
+            'APPROVED_ENGINEER',
+            { ticket_no: ticketNo, subject: ticket.subject },
+            { assigneeId: ticket.assigned_to },
+            {
+              subject: `Your resolution for ticket ${ticketNo} has been approved`,
+              body: `Your resolution for ticket ${ticketNo} has been approved.\n\nSubject: ${ticket.subject}`,
+              defaultRoles: ['assignee']
+            }
+          );
+          recipientEmails.forEach(email => {
             supabase.functions.invoke('send-email', {
-              body: { to: engineerEmail, subject, body, ticket_id: id }
+              body: { to: email, subject, body, ticket_id: id }
             }).catch(err => console.error("Error sending email to engineer:", err));
-          }
+          });
         } catch (e) { console.error(e); }
       }
 
@@ -1446,24 +1451,25 @@ export const TicketDetail: React.FC = () => {
             console.error("Failed to insert notification for rejection:", notifError);
           }
 
-          // Send email to Engineer
+          // Send email to Engineer (and any other configured recipients)
           (async () => {
             try {
-              const { data: engineerEmail } = await supabase.rpc('get_user_email', { p_user_id: ticket.assigned_to });
-              if (engineerEmail) {
-                const tktNo = ticket.ticket_no || ticket.id.substring(0, 8).toUpperCase();
-                const { subject, body } = await getRenderedEmail(
-                  'RETURNED_ENGINEER',
-                  { ticket_no: tktNo, subject: ticket.subject },
-                  {
-                    subject: `Your resolution for ticket ${tktNo} was rejected`,
-                    body: `Your resolution for ticket ${tktNo} was rejected and requires further investigation.\n\nSubject: ${ticket.subject}`
-                  }
-                );
+              const tktNo = ticket.ticket_no || ticket.id.substring(0, 8).toUpperCase();
+              const { subject, body, recipientEmails } = await getEmailDispatch(
+                'RETURNED_ENGINEER',
+                { ticket_no: tktNo, subject: ticket.subject },
+                { assigneeId: ticket.assigned_to },
+                {
+                  subject: `Your resolution for ticket ${tktNo} was rejected`,
+                  body: `Your resolution for ticket ${tktNo} was rejected and requires further investigation.\n\nSubject: ${ticket.subject}`,
+                  defaultRoles: ['assignee']
+                }
+              );
+              recipientEmails.forEach(email => {
                 supabase.functions.invoke('send-email', {
-                  body: { to: engineerEmail, subject, body, ticket_id: id }
+                  body: { to: email, subject, body, ticket_id: id }
                 }).catch(err => console.error("Error sending email to engineer:", err));
-              }
+              });
             } catch (e) { console.error(e); }
           })();
         }
@@ -1509,6 +1515,11 @@ export const TicketDetail: React.FC = () => {
             >
               {t(`statusLabels.${(ticket.status?.status_code || ticket.status_code || ticket.status || '').toUpperCase()}`, { defaultValue: ticket.status?.status_name || ticket.status_code || ticket.status })}
             </span>
+            {ticket.ticket_type === 'DEVELOPMENT' && (
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold ms-1 bg-indigo-100 text-indigo-700 border border-indigo-200">
+                {t('ticketDetail.developmentTicket')}
+              </span>
+            )}
           </div>
           <div className="h-4 w-px bg-slate-300 ms-1"></div>
           <h1 className="text-xl font-bold text-slate-900 line-clamp-1 pe-4 ms-1">
@@ -1538,35 +1549,47 @@ export const TicketDetail: React.FC = () => {
                 <ArrowLeft size={16} />{t("ticketDetail.reopenTicket")}</button>
             )}
 
-          {isAdmin &&
-            (ticket.status?.status_code || ticket.status_code || "").toUpperCase() === "RESOLVED_PENDING_APPROVAL" && (
+          {/* Tickets never escalated to another team can be closed by the assigned
+              Support member or an admin; tickets that WERE escalated to a specialized
+              team are the admin's responsibility to review and close. */}
+          {(() => {
+            const wasEscalatedToOtherTeam = comments.some((c: any) => c.escalated_team_id);
+            const canClose = isAdmin || (!wasEscalatedToOtherTeam && ticket?.assigned_to === user?.id);
+            const isPendingApproval = (ticket.status?.status_code || ticket.status_code || "").toUpperCase() === "RESOLVED_PENDING_APPROVAL";
+            if (!isPendingApproval) return null;
+            return (
               <>
-                <button
-                  onClick={handleRejectTicket}
-                  disabled={rejecting}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
-                >
-                  {rejecting ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                  ) : (
-                    <XCircle size={16} />
-                  )}
-                  {t("ticketDetail.reject")}
-                </button>
-                <button
-                  onClick={handleCloseTicket}
-                  disabled={closing}
-                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
-                >
-                  {closing ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                  ) : (
-                    <CheckCircle2 size={16} />
-                  )}
-                  {t("ticketDetail.close")}
-                </button>
+                {isAdmin && (
+                  <button
+                    onClick={handleRejectTicket}
+                    disabled={rejecting}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
+                  >
+                    {rejecting ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                    ) : (
+                      <XCircle size={16} />
+                    )}
+                    {t("ticketDetail.reject")}
+                  </button>
+                )}
+                {canClose && (
+                  <button
+                    onClick={handleCloseTicket}
+                    disabled={closing}
+                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
+                  >
+                    {closing ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                    ) : (
+                      <CheckCircle2 size={16} />
+                    )}
+                    {t("ticketDetail.close")}
+                  </button>
+                )}
               </>
-            )}
+            );
+          })()}
 
           {user && ["BANK_USER", "BANK_MANAGER", "BANK_ADMIN"].includes((user.role_code || "").toUpperCase()) &&
             (ticket.status?.status_code || ticket.status_code || "").toUpperCase() === "CLOSED" && (

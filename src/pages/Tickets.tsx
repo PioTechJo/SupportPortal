@@ -33,6 +33,7 @@ import {
 import { TicketCreationWizard } from '../components/ticket-wizard/TicketCreationWizard';
 
 const COLUMN_DEFS: { key: string; label: string; adminOnly?: boolean }[] = [
+  { key: 'ticket_type', label: 'Type' },
   { key: 'priority', label: 'Priority' },
   { key: 'status_code', label: 'Status' },
   { key: 'customer_name', label: 'Customer' },
@@ -45,6 +46,7 @@ const COLUMN_DEFS: { key: string; label: string; adminOnly?: boolean }[] = [
 // col.label above is only an English fallback (used for CSV/debug); the dropdown renders
 // via these i18n keys so the "Columns" menu follows the active language.
 const COLUMN_LABEL_KEYS: Record<string, string> = {
+  ticket_type: 'tickets.type',
   priority: 'tickets.priority',
   status_code: 'tickets.status',
   customer_name: 'tickets.customer',
@@ -844,6 +846,9 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
                     {t('tickets.subject')} <SortIcon column="title" />
                     <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-slate-300/60 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'title'); }} />
                   </th>
+                  {visibleColumns['ticket_type'] && <th className={`px-6 ${cellPadding} text-xs font-semibold text-slate-500 uppercase tracking-wider`} style={{ width: colWidths['ticket_type'] ? `${colWidths['ticket_type']}px` : '100px' }}>
+                    {t('tickets.type')}
+                  </th>}
                   {visibleColumns['priority'] && <th className={`px-6 ${cellPadding} text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors relative group/th`} style={{ width: colWidths['priority'] ? `${colWidths['priority']}px` : '112px' }} onClick={() => handleSort('priority')}>
                     {t('tickets.priority')} <SortIcon column="priority" />
                     <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-slate-300/60 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'priority'); }} />
@@ -932,11 +937,24 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
                           }
                         </div>
                       </td>
+                      {visibleColumns['ticket_type'] && (
+                        <td className={`px-6 ${cellPadding}`}>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            (ticket as any).ticket_type === 'DEVELOPMENT' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            {(ticket as any).ticket_type === 'DEVELOPMENT' ? t('ticketDetail.developmentTicket') : t('tickets.support')}
+                          </span>
+                        </td>
+                      )}
                       {visibleColumns['priority'] && (
                         <td className={`px-6 ${cellPadding}`}>
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${getPriorityStyle(ticket.priority)}`}>
-                            {ticket.priority || 'Medium'}
-                          </span>
+                          {(ticket as any).ticket_type === 'DEVELOPMENT' ? (
+                            <span className="text-slate-300 italic text-xs">—</span>
+                          ) : (
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${getPriorityStyle(ticket.priority)}`}>
+                              {ticket.priority || 'Medium'}
+                            </span>
+                          )}
                         </td>
                       )}
                       {visibleColumns['status_code'] && (

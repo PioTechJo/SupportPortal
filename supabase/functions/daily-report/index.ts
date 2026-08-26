@@ -29,14 +29,14 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // 1. Recipients
-    const { data: recipientsSetting } = await supabase
-      .from('system_settings')
-      .select('setting_value')
-      .eq('setting_key', 'daily_report_recipients')
-      .maybeSingle();
+    // 1. Recipients — falls back to the shared Support Group mailbox if no
+    // explicit list has been configured on the Daily Report admin page.
+    const [{ data: recipientsSetting }, { data: supportGroupSetting }] = await Promise.all([
+      supabase.from('system_settings').select('setting_value').eq('setting_key', 'daily_report_recipients').maybeSingle(),
+      supabase.from('system_settings').select('setting_value').eq('setting_key', 'support_group_email').maybeSingle(),
+    ]);
 
-    const recipients = (recipientsSetting?.setting_value || '')
+    const recipients = (recipientsSetting?.setting_value || supportGroupSetting?.setting_value || '')
       .split(',')
       .map((e: string) => e.trim())
       .filter(Boolean);
@@ -48,15 +48,18 @@ serve(async (req) => {
       });
     }
 
-    // 2. Ticket stats
-    const { data: stats, error: statsError } = await supabase.rpc('get_daily_report_stats');
-    if (statsError) throw statsError;
+    // 2. Pending tickets list
+    const { data: pendingTickets, error: pendingError } = await supabase.rpc('get_pending_tickets_list');
+    if (pendingError) throw pendingError;
+
+    const pendingList: any[] = pendingTickets || [];
+    const pendingLinesText = pendingList.length > 0
+      ? pendingList.map(t => `${t.ticket_no} - ${t.subject} (${t.status_name}, ${t.days_open}d open)`).join('\n')
+      : 'No pending tickets.';
 
     const vars: Record<string, string> = {
-      new_today: String(stats?.new_today ?? 0),
-      resolved_today: String(stats?.resolved_today ?? 0),
-      open_total: String(stats?.open_total ?? 0),
-      overdue_sla: String(stats?.overdue_sla ?? 0),
+      pending_count: String(pendingList.length),
+      pending_tickets_list: pendingLinesText,
       report_date: new Date().toLocaleDateString('en-GB'),
     };
 
@@ -69,10 +72,10 @@ serve(async (req) => {
 
     const subject = template
       ? fillTemplate(template.subject_template, vars)
-      : `Daily Ticket Report - ${vars.report_date}`;
+      : `Daily Pending Tickets Report - ${vars.report_date}`;
     const rawBody = template
       ? fillTemplate(template.body_template, vars)
-      : `New today: ${vars.new_today}\nResolved/Closed today: ${vars.resolved_today}\nCurrently open: ${vars.open_total}\nOverdue SLA: ${vars.overdue_sla}`;
+      : `Pending tickets (${vars.pending_count}):\n\n${vars.pending_tickets_list}`;
 
     const htmlBody = `
       <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">

@@ -70,12 +70,28 @@ export const ReportBuilder: React.FC = () => {
 
   const [reportMode, setReportMode] = useState<'group' | 'list'>('list');
   const [draggedFields, setDraggedFields] = useState<FieldDef[]>(defaultFields);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('all');
 
-  const { data: tickets = [], isLoading: ticketsLoading } = useQuery({
+  const { data: allTickets = [], isLoading: ticketsLoading } = useQuery({
     queryKey: ['tickets'],
     queryFn: () => api.getTickets(),
     refetchInterval: 15000,
   });
+
+  const bankOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    allTickets.forEach((t: any) => {
+      if (t.customer_id && t.customer_name) map.set(t.customer_id, t.customer_name);
+    });
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [allTickets]);
+
+  const tickets = useMemo(() => {
+    if (selectedCustomerId === 'all') return allTickets;
+    return allTickets.filter((t: any) => t.customer_id === selectedCustomerId);
+  }, [allTickets, selectedCustomerId]);
 
   const { data: escalations = [], isLoading: escLoading } = useQuery({
     queryKey: ['escalations'],
@@ -257,6 +273,16 @@ export const ReportBuilder: React.FC = () => {
           <p className="text-sm text-slate-500 mt-1">Drag and drop fields to dynamically group and analyze your ticket data.</p>
         </div>
         <div className="flex flex-col sm:flex-row items-center gap-4">
+          <select
+            value={selectedCustomerId}
+            onChange={(e) => setSelectedCustomerId(e.target.value)}
+            className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="all">All Banks</option>
+            {bankOptions.map(b => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
           <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
             <button
               onClick={() => switchMode('group')}

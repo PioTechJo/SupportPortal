@@ -81,6 +81,7 @@ export interface Ticket {
   ticket_statuses?: any;
   ticket_no?: string;
   is_express?: boolean;
+  ticket_type?: 'SUPPORT' | 'DEVELOPMENT';
 }
 
 export interface Comment {

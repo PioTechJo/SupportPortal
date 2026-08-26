@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { getRenderedEmail } from '../../lib/emailTemplates';
+import { getEmailDispatch } from '../../lib/emailTemplates';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Step0Customer } from './Step0Customer';
 import { Step1Product } from './Step1Product';
+import { StepTicketType, TicketType } from './StepTicketType';
+import { StepTimeline } from './StepTimeline';
 import { Step2Category } from './Step2Category';
 import { Step3Questions } from './Step3Questions';
 import { StepChat } from './StepChat';
@@ -34,6 +36,8 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [skippedDiagnostics, setSkippedDiagnostics] = useState<boolean>(false);
+  const [ticketType, setTicketType] = useState<TicketType | ''>('');
+  const [neededByDate, setNeededByDate] = useState<string>('');
   
   // Extra Info for display/submission
   const [title, setTitle] = useState<string>('');
@@ -184,88 +188,98 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
     setError(null);
 
     try {
-      // 0. Calculate Severity Score
-      let diagnosticScore = 0;
-      let finalPriorityId = defaultPriorityId;
-      let isAutoFlagged = true; // Always auto-flagged based on diagnostic logic
-      let scorePercentage = 30; // Default if 0 questions answered
-      
-      const answerEntries = Object.entries(answers);
-      const answeredCount = answerEntries.length;
-      let maxPossibleScore = 0;
-
-      if (answeredCount > 0) {
-        // Fetch all point values for these answers
-        const questionIds = answerEntries.map(e => e[0]);
-        const { data: optionsData } = await supabase
-          .from('ai_question_options')
-          .select('question_id, option_value, point_value')
-          .in('question_id', questionIds);
-          
-        if (optionsData) {
-          answerEntries.forEach(([qId, val]) => {
-            const opt = optionsData.find(o => o.question_id === qId && o.option_value === val);
-            if (opt && opt.point_value) {
-              diagnosticScore += Number(opt.point_value);
-            }
-          });
-        }
-        
-        maxPossibleScore = answeredCount * 10; // Assuming max 10 points per question
-        scorePercentage = maxPossibleScore > 0 ? (diagnosticScore / maxPossibleScore) * 100 : 0;
-      }
-      
-      // Determine priorityName based on scorePercentage
-      let priorityName = 'Low';
-      if (skippedDiagnostics) {
-        // Category + Questions were skipped — no diagnostic signal to score, so default to Low.
-        priorityName = 'Low';
-      } else if (scorePercentage >= 70) {
-        priorityName = 'Urgent';
-      } else if (scorePercentage >= 50) {
-        priorityName = 'High';
-      } else if (scorePercentage >= 30) {
-        priorityName = 'Medium';
-      }
-      
-      console.log('[DEBUG] Severity Calculation:', {
-        answeredCount,
-        diagnosticScore,
-        maxPossibleScore,
-        scorePercentage,
-        priorityName
-      });
-      
-      // Fetch corresponding priority ID
-      const { data: targetPriorityData } = await supabase
-        .from('priorities')
-        .select('id')
-        .eq('priority_name', priorityName)
-        .maybeSingle();
-        
-      if (targetPriorityData) {
-        finalPriorityId = targetPriorityData.id;
-      } else {
-        // Fallback if priority doesn't exist
-        isAutoFlagged = false; 
-      }
-
-      // 0.5. Calculate SLA Due Date
-      let slaDays = 3; // Default for Medium
-      const settingKey = `sla_days_${priorityName.toLowerCase()}`;
-      const { data: slaSetting } = await supabase
-        .from('system_settings')
-        .select('setting_value')
-        .eq('setting_key', settingKey)
-        .maybeSingle();
-        
-      if (slaSetting?.setting_value) {
-        slaDays = parseInt(slaSetting.setting_value);
-      }
-      
+      const isDevelopmentTicket = ticketType === 'DEVELOPMENT';
       const createdAt = new Date();
-      const slaDueDate = new Date(createdAt);
-      slaDueDate.setDate(slaDueDate.getDate() + slaDays);
+      let finalPriorityId: string | null = defaultPriorityId;
+      let isAutoFlagged = true; // Always auto-flagged based on diagnostic logic
+      let diagnosticScore = 0;
+      let priorityName = 'Low';
+      let slaDueDate = new Date(createdAt);
+
+      if (isDevelopmentTicket) {
+        // Development tickets are timeline-driven, not severity-driven — no priority
+        // is assigned, and the SLA due date is the bank's requested delivery date.
+        finalPriorityId = null;
+        isAutoFlagged = false;
+        slaDueDate = neededByDate ? new Date(neededByDate) : slaDueDate;
+      } else {
+        // 0. Calculate Severity Score
+        let scorePercentage = 30; // Default if 0 questions answered
+
+        const answerEntries = Object.entries(answers);
+        const answeredCount = answerEntries.length;
+        let maxPossibleScore = 0;
+
+        if (answeredCount > 0) {
+          // Fetch all point values for these answers
+          const questionIds = answerEntries.map(e => e[0]);
+          const { data: optionsData } = await supabase
+            .from('ai_question_options')
+            .select('question_id, option_value, point_value')
+            .in('question_id', questionIds);
+
+          if (optionsData) {
+            answerEntries.forEach(([qId, val]) => {
+              const opt = optionsData.find(o => o.question_id === qId && o.option_value === val);
+              if (opt && opt.point_value) {
+                diagnosticScore += Number(opt.point_value);
+              }
+            });
+          }
+
+          maxPossibleScore = answeredCount * 10; // Assuming max 10 points per question
+          scorePercentage = maxPossibleScore > 0 ? (diagnosticScore / maxPossibleScore) * 100 : 0;
+        }
+
+        // Determine priorityName based on scorePercentage
+        if (skippedDiagnostics) {
+          // Category + Questions were skipped — no diagnostic signal to score, so default to Low.
+          priorityName = 'Low';
+        } else if (scorePercentage >= 70) {
+          priorityName = 'Urgent';
+        } else if (scorePercentage >= 50) {
+          priorityName = 'High';
+        } else if (scorePercentage >= 30) {
+          priorityName = 'Medium';
+        }
+
+        console.log('[DEBUG] Severity Calculation:', {
+          answeredCount,
+          diagnosticScore,
+          maxPossibleScore,
+          scorePercentage,
+          priorityName
+        });
+
+        // Fetch corresponding priority ID
+        const { data: targetPriorityData } = await supabase
+          .from('priorities')
+          .select('id')
+          .eq('priority_name', priorityName)
+          .maybeSingle();
+
+        if (targetPriorityData) {
+          finalPriorityId = targetPriorityData.id;
+        } else {
+          // Fallback if priority doesn't exist
+          isAutoFlagged = false;
+        }
+
+        // 0.5. Calculate SLA Due Date
+        let slaDays = 3; // Default for Medium
+        const settingKey = `sla_days_${priorityName.toLowerCase()}`;
+        const { data: slaSetting } = await supabase
+          .from('system_settings')
+          .select('setting_value')
+          .eq('setting_key', settingKey)
+          .maybeSingle();
+
+        if (slaSetting?.setting_value) {
+          slaDays = parseInt(slaSetting.setting_value);
+        }
+
+        slaDueDate.setDate(slaDueDate.getDate() + slaDays);
+      }
 
       // 1. Create Ticket
       const { data: ticket, error: ticketError } = await supabase
@@ -276,6 +290,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
           customer_id: selectedCustomerId,
           product_id: selectedProductId,
           category_id: selectedCategoryId || null,
+          ticket_type: ticketType || 'SUPPORT',
           status_id: newStatusId,
           priority_id: finalPriorityId,
           priority_auto_flagged: isAutoFlagged,
@@ -349,29 +364,26 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
             link_ticket_id: ticket.id,
             created_at: new Date().toISOString()
           }));
-          
+
           const { error: insertError } = await supabase.from('notifications').insert(notificationsPayload);
           if (insertError) {
             console.error("Supabase notification insert error:", insertError);
           }
 
-          // Fetch admin emails
-          const { data: adminUsers } = await supabase.from('users').select('email').in('id', adminIds);
-          const adminEmails = adminUsers?.map(u => u.email).filter(Boolean) || [];
-
-          // Send email to each admin (fire and forget)
           const adminEmailVars = { ticket_no: ticketNo, subject: title, created_by_email: user?.email || 'Customer' };
           const adminEmailFallback = {
             subject: `New ticket ${ticketNo} has been created by ${user?.email || 'Customer'} - ${title}`,
-            body: `Hello Admin,\n\nA new ticket has been created:\n\nTicket No: ${ticketNo}\nSubject: ${title}\nCreated By: ${user?.email || 'Customer'}\n\nPlease review the ticket in the admin portal.`
+            body: `Hello Admin,\n\nA new ticket has been created:\n\nTicket No: ${ticketNo}\nSubject: ${title}\nCreated By: ${user?.email || 'Customer'}\n\nPlease review the ticket in the admin portal.`,
+            defaultRoles: ['admin']
           };
-          getRenderedEmail('NEW_TICKET_ADMIN', adminEmailVars, adminEmailFallback).then(({ subject, body }) => {
-            adminEmails.forEach(email => {
-              supabase.functions.invoke('send-email', {
-                body: { to: email, subject, body, ticket_id: ticket.id }
-              }).catch(err => console.error("Error sending email to admin:", err));
+          getEmailDispatch('NEW_TICKET_ADMIN', adminEmailVars, { createdById: user?.id }, adminEmailFallback)
+            .then(({ subject, body, recipientEmails }) => {
+              recipientEmails.forEach(email => {
+                supabase.functions.invoke('send-email', {
+                  body: { to: email, subject, body, ticket_id: ticket.id }
+                }).catch(err => console.error("Error sending email to admin:", err));
+              });
             });
-          });
         }
 
         // Send email to the customer
@@ -381,17 +393,21 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
             subject: title,
             start_date: createdAt.toLocaleDateString(),
             end_date: slaDueDate.toLocaleDateString(),
-            priority: priorityName
+            priority: isDevelopmentTicket ? 'N/A' : priorityName
           };
           const customerEmailFallback = {
             subject: `Your ticket ${ticketNo} has been created`,
-            body: `Hello,\n\nYour ticket ${ticketNo} has been created and is being reviewed.\n\nSubject: ${title}\n\nWe will get back to you shortly.`
+            body: `Hello,\n\nYour ticket ${ticketNo} has been created and is being reviewed.\n\nSubject: ${title}\n\nWe will get back to you shortly.`,
+            defaultRoles: ['customer']
           };
-          getRenderedEmail('NEW_TICKET_CUSTOMER', customerEmailVars, customerEmailFallback).then(({ subject, body }) => {
-            supabase.functions.invoke('send-email', {
-              body: { to: user.email, subject, body, ticket_id: ticket.id }
-            }).catch(err => console.error("Error sending email to customer:", err));
-          });
+          getEmailDispatch('NEW_TICKET_CUSTOMER', customerEmailVars, { createdById: user?.id }, customerEmailFallback)
+            .then(({ subject, body, recipientEmails }) => {
+              recipientEmails.forEach(email => {
+                supabase.functions.invoke('send-email', {
+                  body: { to: email, subject, body, ticket_id: ticket.id }
+                }).catch(err => console.error("Error sending email to customer:", err));
+              });
+            });
         }
       } catch (notifErr) {
         console.error("Could not post system alerts / send emails", notifErr);
@@ -451,7 +467,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
         onSuccess(ticket.id, title, selectedProductName);
       }
       setCreatedTicketId(ticket.id);
-      setCurrentStep(6);
+      setCurrentStep(8);
     } catch (err: any) {
       console.error('Submit error:', err);
       setError(err.message || 'Failed to create ticket.');
@@ -474,7 +490,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
         );
       case 1:
         return (
-          <Step1Product 
+          <Step1Product
             organizationId={selectedCustomerId}
             selectedProductId={selectedProductId}
             onSelect={(id, name) => {
@@ -487,7 +503,18 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
         );
       case 2:
         return (
-          <Step2Category 
+          <StepTicketType
+            selectedType={ticketType}
+            onSelect={(type) => {
+              setTicketType(type);
+              setCurrentStep(type === 'DEVELOPMENT' ? 6 : 3);
+            }}
+            onBack={() => setCurrentStep(1)}
+          />
+        );
+      case 3:
+        return (
+          <Step2Category
             productId={selectedProductId}
             productName={selectedProductName}
             selectedCategoryId={selectedCategoryId}
@@ -495,44 +522,53 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
               setSelectedCategoryId(id);
               setSelectedCategoryName(name);
               setSkippedDiagnostics(false);
-              setCurrentStep(3);
+              setCurrentStep(4);
             }}
-            onBack={() => setCurrentStep(1)}
+            onBack={() => setCurrentStep(2)}
             onSkip={() => {
               setSelectedCategoryId('');
               setSelectedCategoryName('');
               setAnswers({});
               setSkippedDiagnostics(true);
-              setCurrentStep(4);
+              setCurrentStep(5);
             }}
           />
         );
-      case 3:
+      case 4:
         return (
-          <Step3Questions 
+          <Step3Questions
             categoryId={selectedCategoryId}
             productName={selectedProductName}
             categoryName={selectedCategoryName}
             answers={answers}
             setAnswers={setAnswers}
-            onBack={() => setCurrentStep(2)}
+            onBack={() => setCurrentStep(3)}
             onNext={async () => {
               await checkForDuplicates();
-              setCurrentStep(4);
+              setCurrentStep(5);
             }}
           />
         );
-        case 4:
-          return (
-            <StepChat 
-              chatHistory={chatHistory}
-              setChatHistory={setChatHistory}
-              onSkip={() => setCurrentStep(5)}
-              onNext={() => setCurrentStep(5)}
-              selectedProductId={selectedProductId}
-            />
-          );
       case 5:
+        return (
+          <StepChat
+            chatHistory={chatHistory}
+            setChatHistory={setChatHistory}
+            onSkip={() => setCurrentStep(7)}
+            onNext={() => setCurrentStep(7)}
+            selectedProductId={selectedProductId}
+          />
+        );
+      case 6:
+        return (
+          <StepTimeline
+            value={neededByDate}
+            onChange={setNeededByDate}
+            onNext={() => setCurrentStep(7)}
+            onBack={() => setCurrentStep(2)}
+          />
+        );
+      case 7:
         return (
           <div className="flex flex-col h-full space-y-4">
             {duplicateTickets.length > 0 && (
@@ -579,14 +615,14 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
               onAddAttachments={handleAddAttachments}
               onRemoveAttachment={handleRemoveAttachment}
               attachmentError={attachmentError}
-              onBack={() => setCurrentStep(4)}
+              onBack={() => setCurrentStep(ticketType === 'DEVELOPMENT' ? 6 : 5)}
               onSubmit={handleSubmit}
               isSubmitting={isSubmitting}
               error={error}
             />
           </div>
         );
-      case 6:
+      case 8:
         return (
           <div className="flex flex-col items-center justify-center py-8 text-center animate-in fade-in zoom-in-95 duration-300">
             <div className="w-14 h-14 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
@@ -648,33 +684,28 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
     }
   };
 
-  const tabs = isAdmin 
-    ? [t('wizard.stepCustomer'), t('wizard.stepProduct'), t('wizard.stepCategory'), t('wizard.stepQuestions'), t('wizard.stepChat'), t('wizard.stepDetails')] 
-    : [t('wizard.stepProduct'), t('wizard.stepCategory'), t('wizard.stepQuestions'), t('wizard.stepChat'), t('wizard.stepDetails'), t('wizard.stepResult')];
+  // Step numbering: 0 Customer(admin), 1 Product, 2 TicketType, [3 Category, 4
+  // Questions, 5 Chat] (Support path) OR [6 Timeline] (Development path), 7 Details.
+  const isDevelopmentPath = ticketType === 'DEVELOPMENT';
+  const stepPath = isDevelopmentPath
+    ? (isAdmin ? [0, 1, 2, 6, 7] : [1, 2, 6, 7])
+    : (isAdmin ? [0, 1, 2, 3, 4, 5, 7] : [1, 2, 3, 4, 5, 7]);
+
+  const tabs = isDevelopmentPath
+    ? (isAdmin
+        ? [t('wizard.stepCustomer'), t('wizard.stepProduct'), t('wizard.stepTicketType'), t('wizard.stepTimeline'), t('wizard.stepDetails')]
+        : [t('wizard.stepProduct'), t('wizard.stepTicketType'), t('wizard.stepTimeline'), t('wizard.stepDetails')])
+    : (isAdmin
+        ? [t('wizard.stepCustomer'), t('wizard.stepProduct'), t('wizard.stepTicketType'), t('wizard.stepCategory'), t('wizard.stepQuestions'), t('wizard.stepChat'), t('wizard.stepDetails')]
+        : [t('wizard.stepProduct'), t('wizard.stepTicketType'), t('wizard.stepCategory'), t('wizard.stepQuestions'), t('wizard.stepChat'), t('wizard.stepDetails')]);
 
   const getStepProgress = () => {
-    if (isAdmin) {
-      if (currentStep === 0) return 20;
-      if (currentStep === 1) return 40;
-      if (currentStep === 2) return 60;
-      if (currentStep === 3) return 80;
-      return 100;
-    } else {
-      if (currentStep === 1) return 20;
-      if (currentStep === 2) return 40;
-      if (currentStep === 3) return 60;
-      if (currentStep === 4) return 80;
-      return 100;
-    }
+    const idx = stepPath.indexOf(currentStep);
+    if (idx === -1) return 100;
+    return Math.round(((idx + 1) / stepPath.length) * 100);
   };
 
-  const getActiveTabIndex = () => {
-    if (isAdmin) {
-      return currentStep;
-    } else {
-      return currentStep - 1;
-    }
-  };
+  const getActiveTabIndex = () => stepPath.indexOf(currentStep);
 
   const activeTabIndex = getActiveTabIndex();
 
