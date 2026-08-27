@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -53,17 +54,31 @@ serve(async (req) => {
     if (pendingError) throw pendingError;
 
     const pendingList: any[] = pendingTickets || [];
-    const pendingLinesText = pendingList.length > 0
-      ? pendingList.map(t => `${t.ticket_no} - ${t.subject} (${t.status_name}, ${t.days_open}d open)`).join('\n')
-      : 'No pending tickets.';
+    const reportDate = new Date().toLocaleDateString('en-GB');
 
     const vars: Record<string, string> = {
       pending_count: String(pendingList.length),
-      pending_tickets_list: pendingLinesText,
-      report_date: new Date().toLocaleDateString('en-GB'),
+      report_date: reportDate,
     };
 
-    // 3. Template
+    // 3. Build the Excel attachment
+    const worksheet = XLSX.utils.json_to_sheet(
+      pendingList.length > 0
+        ? pendingList.map(t => ({
+            'Ticket No': t.ticket_no,
+            'Subject': t.subject,
+            'Status': t.status_name,
+            'Days Open': t.days_open,
+          }))
+        : [{ 'Ticket No': '', Subject: 'No pending tickets', Status: '', 'Days Open': '' }]
+    );
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Pending Tickets');
+    const attachmentBase64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
+    const attachmentName = `pending-tickets-${reportDate.replace(/\//g, '-')}.xlsx`;
+
+    // 4. Template (subject/body only — the ticket list itself now lives in the
+    // attached spreadsheet, not the email body)
     const { data: template } = await supabase
       .from('email_templates')
       .select('subject_template, body_template')
@@ -75,7 +90,7 @@ serve(async (req) => {
       : `Daily Pending Tickets Report - ${vars.report_date}`;
     const rawBody = template
       ? fillTemplate(template.body_template, vars)
-      : `Pending tickets (${vars.pending_count}):\n\n${vars.pending_tickets_list}`;
+      : `There are ${vars.pending_count} pending ticket(s) as of ${vars.report_date}. Please see the attached spreadsheet for the full list.`;
 
     const htmlBody = `
       <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
@@ -92,7 +107,7 @@ serve(async (req) => {
       </div>
     `;
 
-    // 4. Send to each recipient and log
+    // 5. Send to each recipient (with the spreadsheet attached) and log
     const results = [];
     for (const to of recipients) {
       let status = 'sent';
@@ -101,7 +116,16 @@ serve(async (req) => {
         const res = await fetch(POWER_AUTOMATE_WEBHOOK_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ to, subject, htmlBody }),
+          body: JSON.stringify({
+            to,
+            subject,
+            htmlBody,
+            attachments: [{
+              name: attachmentName,
+              contentBytes: attachmentBase64,
+              contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            }],
+          }),
         });
         if (!res.ok) {
           status = 'failed';

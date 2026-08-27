@@ -242,6 +242,8 @@
     "continueDetails": "Continue to Details",
     "administratorView": "Administrator View",
     "adminChooseCustomer": "As an administrator, please choose the customer organization.",
+    "searchBanks": "Search banks by name or code...",
+    "noBanksFound": "No banks match your search.",
     "skipDescribe": "Skip - I'll describe it myself",
     "doneContinue": "Done - Continue to ticket",
     "loadingLicensedProducts": "Loading licensed products...",

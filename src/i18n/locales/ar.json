@@ -242,6 +242,8 @@
     "continueDetails": "المتابعة إلى التفاصيل",
     "administratorView": "عرض المسؤول",
     "adminChooseCustomer": "بصفتك مسؤولاً، يرجى اختيار المؤسسة التابعة للعميل.",
+    "searchBanks": "ابحث عن بنك بالاسم أو الرمز...",
+    "noBanksFound": "لا توجد بنوك مطابقة لبحثك.",
     "skipDescribe": "تخطي - سأقوم بالوصف بنفسي",
     "doneContinue": "تم - المتابعة إلى التذكرة",
     "loadingLicensedProducts": "جاري تحميل المنتجات المرخصة...",
