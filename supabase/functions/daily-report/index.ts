@@ -74,7 +74,19 @@ serve(async (req) => {
     );
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Pending Tickets');
-    const attachmentBase64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
+    // Get the raw bytes and base64-encode them ourselves with btoa, rather than
+    // relying on the library's own base64 output — its internal Buffer-based
+    // encoding path behaves unreliably under Deno and was producing corrupted
+    // .xlsx attachments.
+    // XLSX.write's 'array' output can come back as a plain ArrayBuffer rather
+    // than a Uint8Array depending on the runtime, so normalize it explicitly.
+    const wbBytes = new Uint8Array(XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }));
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < wbBytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...wbBytes.subarray(i, i + chunkSize));
+    }
+    const attachmentBase64 = btoa(binary);
     const attachmentName = `pending-tickets-${reportDate.replace(/\//g, '-')}.xlsx`;
 
     // 4. Template (subject/body only — the ticket list itself now lives in the
@@ -151,7 +163,17 @@ serve(async (req) => {
       results.push({ to, status });
     }
 
-    return new Response(JSON.stringify({ success: true, results }), {
+    return new Response(JSON.stringify({
+      success: true,
+      results,
+      debug: {
+        rowCount: pendingList.length,
+        wbBytesLength: wbBytes.length,
+        base64Length: attachmentBase64.length,
+        base64Head: attachmentBase64.slice(0, 16),
+        base64Tail: attachmentBase64.slice(-16),
+      },
+    }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

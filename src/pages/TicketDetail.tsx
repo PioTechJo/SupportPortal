@@ -69,6 +69,7 @@ export const TicketDetail: React.FC = () => {
   const { user } = useAuth();
 
   const [ticket, setTicket] = useState<any>(null);
+  const [followerIds, setFollowerIds] = useState<string[]>([]);
   const [answers, setAnswers] = useState<any[]>([]);
   const [recommendationData, setRecommendationData] = useState<any>(null);
   const [comments, setComments] = useState<any[]>([]);
@@ -139,6 +140,54 @@ export const TicketDetail: React.FC = () => {
   }, [escalatedTeamId]);
   const [updatingPriority, setUpdatingPriority] = useState(false);
   const [prioritiesList, setPrioritiesList] = useState<any[]>([]);
+  const [isEditingSlaDueDate, setIsEditingSlaDueDate] = useState(false);
+  const [slaDueDateDraft, setSlaDueDateDraft] = useState("");
+  const [slaDueDateReason, setSlaDueDateReason] = useState("");
+  const [savingSlaDueDate, setSavingSlaDueDate] = useState(false);
+  const [slaDueDateError, setSlaDueDateError] = useState<string | null>(null);
+
+  const canEditSlaDueDate = isAdmin || ticket?.assigned_to === user?.id;
+
+  const openSlaDueDateEditor = () => {
+    setSlaDueDateDraft(
+      ticket?.sla_due_date
+        ? new Date(ticket.sla_due_date).toISOString().slice(0, 16)
+        : "",
+    );
+    setSlaDueDateReason("");
+    setSlaDueDateError(null);
+    setIsEditingSlaDueDate(true);
+  };
+
+  const handleSaveSlaDueDate = async () => {
+    if (!id || !slaDueDateDraft) return;
+    if (!slaDueDateReason.trim()) {
+      setSlaDueDateError(t("ticketDetail.slaDueDateReasonRequired"));
+      return;
+    }
+    setSavingSlaDueDate(true);
+    setSlaDueDateError(null);
+    try {
+      const { error } = await supabase.rpc("log_sla_due_date_override", {
+        p_ticket_id: id,
+        p_new_due_date: new Date(slaDueDateDraft).toISOString(),
+        p_reason: slaDueDateReason.trim(),
+      });
+      if (error) throw error;
+
+      setTicket({
+        ...ticket,
+        sla_due_date: new Date(slaDueDateDraft).toISOString(),
+        sla_due_date_override_reason: slaDueDateReason.trim(),
+      });
+      setIsEditingSlaDueDate(false);
+    } catch (err: any) {
+      console.error("Error updating SLA due date", err);
+      setSlaDueDateError(err.message || "Failed to update SLA due date.");
+    } finally {
+      setSavingSlaDueDate(false);
+    }
+  };
 
   const handlePriorityChange = async (
     e: React.ChangeEvent<HTMLSelectElement>,
@@ -172,21 +221,10 @@ export const TicketDetail: React.FC = () => {
   };
 
   const renderSlaDueDate = () => {
-    if (!ticket?.created_at)
+    if (!ticket?.sla_due_date)
       return <div className="text-sm text-slate-800">N/A</div>;
 
-    let slaHours = 48; // default
-    const prioName = (
-      ticket.priority?.priority_name ||
-      ticket.priority ||
-      ""
-    ).toUpperCase();
-    if (prioName === "URGENT") slaHours = 4;
-    else if (prioName === "HIGH") slaHours = 24;
-    else if (prioName === "LOW") slaHours = 72;
-
-    const created = new Date(ticket.created_at);
-    const due = new Date(created.getTime() + slaHours * 60 * 60 * 1000);
+    const due = new Date(ticket.sla_due_date);
     const now = new Date();
 
     const isOverdue =
@@ -249,6 +287,7 @@ export const TicketDetail: React.FC = () => {
           commentsRes,
           attachmentsRes,
           remoteRes,
+          followersRes,
         ] = await Promise.all([
           tData.assigned_to
             ? supabase.from("users").select("full_name").eq("id", tData.assigned_to).single()
@@ -290,12 +329,14 @@ export const TicketDetail: React.FC = () => {
             .select("id, meeting_url, message, status, created_at, requested_by")
             .eq("ticket_id", id)
             .order("created_at", { ascending: false }),
+          supabase.from("ticket_followers").select("user_id").eq("ticket_id", id),
         ]);
 
         setTicket({ ...tData, assignedEngineerName: engineerRes.data?.full_name || null });
         setAnswers(answersRes.data || []);
         setRecommendationData(recommendationRes.data);
         setRemoteSessions(remoteRes.data || []);
+        setFollowerIds((followersRes.data || []).map((f: any) => f.user_id));
 
         const commentsData = commentsRes.data;
         const attData = attachmentsRes.data;
@@ -690,7 +731,7 @@ export const TicketDetail: React.FC = () => {
                 const { subject, body, recipientEmails } = await getEmailDispatch(
                   'ESCALATION_DEVELOPER',
                   { ticket_no: tktNo, subject: ticket?.subject || '', escalation_note: escalationNote },
-                  { developerId: selectedDev.id, createdById: ticket?.created_by },
+                  { developerId: selectedDev.id, createdById: ticket?.created_by, followerIds },
                   {
                     subject: `You have been assigned an escalation for ticket ${tktNo}: ${ticket?.subject || ''}`,
                     body: `You have been assigned an escalation for ticket ${tktNo}: ${ticket?.subject || ''}.\n\nEscalation note: ${escalationNote}`,
@@ -1064,7 +1105,7 @@ export const TicketDetail: React.FC = () => {
           const { subject, body, recipientEmails } = await getEmailDispatch(
             'TICKET_ASSIGNED_ENGINEER',
             { ticket_no: ticketNo, subject: ticket.subject, engineer_name: assignedEng.full_name || 'Engineer' },
-            { assigneeId: engineerId, createdById: ticket.created_by },
+            { assigneeId: engineerId, createdById: ticket.created_by, followerIds },
             {
               subject: `You have been assigned to ticket ${ticketNo}: ${ticket.subject}`,
               body: `Hello ${assignedEng.full_name || 'Engineer'},\n\nYou have been assigned to ticket ${ticketNo}.\n\nSubject: ${ticket.subject}\n\nPlease review it in the Support Portal.`,
@@ -1200,7 +1241,7 @@ export const TicketDetail: React.FC = () => {
               const { subject, body, recipientEmails } = await getEmailDispatch(
                 'RESOLVED_ADMIN',
                 { ticket_no: tktNo, subject: ticket.subject, resolved_by_name: user?.full_name || 'an engineer' },
-                { createdById: ticket.created_by, assigneeId: ticket.assigned_to },
+                { createdById: ticket.created_by, assigneeId: ticket.assigned_to, followerIds },
                 {
                   subject: `Ticket ${tktNo} is pending your approval`,
                   body: `Ticket ${tktNo} has been resolved by ${user?.full_name || 'an engineer'} and is pending your approval.\n\nSubject: ${ticket.subject}`,
@@ -1290,7 +1331,7 @@ export const TicketDetail: React.FC = () => {
           const { subject, body, recipientEmails } = await getEmailDispatch(
             'CLOSED_CUSTOMER',
             { ticket_no: ticketNo, subject: ticket.subject },
-            { createdById: ticket.created_by, assigneeId: ticket.assigned_to },
+            { createdById: ticket.created_by, assigneeId: ticket.assigned_to, followerIds },
             {
               subject: `Your ticket ${ticketNo} has been closed`,
               body: `Your ticket ${ticketNo} has been resolved and closed by our support team. Please review and approve the resolution at your convenience.\n\nSubject: ${ticket.subject}`,
@@ -1368,7 +1409,7 @@ export const TicketDetail: React.FC = () => {
           const { subject, body, recipientEmails } = await getEmailDispatch(
             'APPROVED_ENGINEER',
             { ticket_no: ticketNo, subject: ticket.subject },
-            { assigneeId: ticket.assigned_to },
+            { assigneeId: ticket.assigned_to, createdById: ticket.created_by, followerIds },
             {
               subject: `Your resolution for ticket ${ticketNo} has been approved`,
               body: `Your resolution for ticket ${ticketNo} has been approved.\n\nSubject: ${ticket.subject}`,
@@ -1458,7 +1499,7 @@ export const TicketDetail: React.FC = () => {
               const { subject, body, recipientEmails } = await getEmailDispatch(
                 'RETURNED_ENGINEER',
                 { ticket_no: tktNo, subject: ticket.subject },
-                { assigneeId: ticket.assigned_to },
+                { assigneeId: ticket.assigned_to, createdById: ticket.created_by, followerIds },
                 {
                   subject: `Your resolution for ticket ${tktNo} was rejected`,
                   body: `Your resolution for ticket ${tktNo} was rejected and requires further investigation.\n\nSubject: ${ticket.subject}`,
@@ -2177,7 +2218,9 @@ export const TicketDetail: React.FC = () => {
                   <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">{t("ticketDetail.priority")}</div>
                 </div>
                 <div className="ps-7 flex items-center gap-2">
-                  {isAdmin || ticket.assigned_to === user?.id ? (
+                  {ticket.ticket_type === "DEVELOPMENT" ? (
+                    <span className="text-sm font-semibold text-slate-400 italic">—</span>
+                  ) : isAdmin || ticket.assigned_to === user?.id ? (
                     <select
                       value={ticket.priority_id || ""}
                       onChange={handlePriorityChange}
@@ -2205,8 +2248,87 @@ export const TicketDetail: React.FC = () => {
                   </div>
                   <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wide">{t("ticketDetail.slaDueDate")}</div>
                 </div>
-                <div className="ps-7">{renderSlaDueDate()}</div>
+                <div className="ps-7 flex items-center gap-2">
+                  {renderSlaDueDate()}
+                  {canEditSlaDueDate && (
+                    <button
+                      onClick={openSlaDueDateEditor}
+                      className="text-slate-300 hover:text-slate-500 transition-colors"
+                      title={t("ticketDetail.editSlaDueDate")}
+                    >
+                      <Edit size={13} />
+                    </button>
+                  )}
+                </div>
+                {ticket?.original_sla_due_date &&
+                  ticket?.sla_due_date &&
+                  ticket.original_sla_due_date !== ticket.sla_due_date && (
+                    <div className="ps-7 text-[11px] text-slate-400 mt-1">
+                      {t("ticketDetail.originalSlaDueDate")}: {new Date(ticket.original_sla_due_date).toLocaleString()}
+                      {ticket?.sla_due_date_override_reason && (
+                        <> — {ticket.sla_due_date_override_reason}</>
+                      )}
+                    </div>
+                  )}
               </div>
+
+              {isEditingSlaDueDate && (
+                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-bold text-slate-800">
+                        {t("ticketDetail.editSlaDueDate")}
+                      </h3>
+                      <button onClick={() => setIsEditingSlaDueDate(false)} className="text-slate-400 hover:text-slate-600">
+                        <X size={18} />
+                      </button>
+                    </div>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">
+                          {t("ticketDetail.slaDueDate")}
+                        </label>
+                        <input
+                          type="datetime-local"
+                          value={slaDueDateDraft}
+                          onChange={(e) => setSlaDueDateDraft(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-teal-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">
+                          {t("ticketDetail.slaDueDateReason")}
+                        </label>
+                        <textarea
+                          value={slaDueDateReason}
+                          onChange={(e) => setSlaDueDateReason(e.target.value)}
+                          rows={3}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-teal-500"
+                          placeholder={t("ticketDetail.slaDueDateReasonPlaceholder")}
+                        />
+                      </div>
+                      {slaDueDateError && (
+                        <div className="text-xs text-red-600">{slaDueDateError}</div>
+                      )}
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button
+                          onClick={() => setIsEditingSlaDueDate(false)}
+                          className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 rounded-lg"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleSaveSlaDueDate}
+                          disabled={savingSlaDueDate || !slaDueDateDraft || !slaDueDateReason.trim()}
+                          className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 rounded-lg"
+                        >
+                          {savingSlaDueDate ? "Saving..." : "Save"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="py-4 border-b border-slate-100">
                 <div className="flex items-center gap-3 mb-1">

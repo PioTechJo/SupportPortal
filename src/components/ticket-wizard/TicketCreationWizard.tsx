@@ -4,6 +4,7 @@ import { getEmailDispatch } from '../../lib/emailTemplates';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Step0Customer } from './Step0Customer';
+import { StepFollowers } from './StepFollowers';
 import { Step1Product } from './Step1Product';
 import { StepTicketType, TicketType } from './StepTicketType';
 import { StepTimeline } from './StepTimeline';
@@ -38,6 +39,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
   const [skippedDiagnostics, setSkippedDiagnostics] = useState<boolean>(false);
   const [ticketType, setTicketType] = useState<TicketType | ''>('');
   const [neededByDate, setNeededByDate] = useState<string>('');
+  const [selectedFollowerIds, setSelectedFollowerIds] = useState<string[]>([]);
   
   // Extra Info for display/submission
   const [title, setTitle] = useState<string>('');
@@ -323,6 +325,18 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
         console.error('Error refreshing ticket_no after creation:', ticketNoRefreshErr);
       }
 
+      // 1.35b. Save the bank users the admin picked to receive notifications
+      // for this ticket (only relevant when an admin created it on the bank's behalf).
+      if (isAdmin && selectedFollowerIds.length > 0) {
+        try {
+          await supabase.from('ticket_followers').insert(
+            selectedFollowerIds.map(userId => ({ ticket_id: ticket.id, user_id: userId }))
+          );
+        } catch (followerErr) {
+          console.error('Error saving ticket followers:', followerErr);
+        }
+      }
+
       // 1.4. Upload any attachments picked during the wizard, now that we have a ticket id
       if (attachments.length > 0 && user) {
         for (const file of attachments) {
@@ -376,7 +390,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
             body: `Hello Admin,\n\nA new ticket has been created:\n\nTicket No: ${ticketNo}\nSubject: ${title}\nCreated By: ${user?.email || 'Customer'}\n\nPlease review the ticket in the admin portal.`,
             defaultRoles: ['admin']
           };
-          getEmailDispatch('NEW_TICKET_ADMIN', adminEmailVars, { createdById: user?.id }, adminEmailFallback)
+          getEmailDispatch('NEW_TICKET_ADMIN', adminEmailVars, { createdById: user?.id, followerIds: selectedFollowerIds }, adminEmailFallback)
             .then(({ subject, body, recipientEmails }) => {
               recipientEmails.forEach(email => {
                 supabase.functions.invoke('send-email', {
@@ -400,7 +414,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
             body: `Hello,\n\nYour ticket ${ticketNo} has been created and is being reviewed.\n\nSubject: ${title}\n\nWe will get back to you shortly.`,
             defaultRoles: ['customer']
           };
-          getEmailDispatch('NEW_TICKET_CUSTOMER', customerEmailVars, { createdById: user?.id }, customerEmailFallback)
+          getEmailDispatch('NEW_TICKET_CUSTOMER', customerEmailVars, { createdById: user?.id, followerIds: selectedFollowerIds }, customerEmailFallback)
             .then(({ subject, body, recipientEmails }) => {
               recipientEmails.forEach(email => {
                 supabase.functions.invoke('send-email', {
@@ -480,12 +494,23 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
     switch (currentStep) {
       case 0:
         return (
-          <Step0Customer 
+          <Step0Customer
             selectedCustomerId={selectedCustomerId}
             onSelect={(id) => {
               setSelectedCustomerId(id);
-              setCurrentStep(1);
+              setSelectedFollowerIds([]);
+              setCurrentStep(20);
             }}
+          />
+        );
+      case 20:
+        return (
+          <StepFollowers
+            customerId={selectedCustomerId}
+            selectedUserIds={selectedFollowerIds}
+            onChange={setSelectedFollowerIds}
+            onNext={() => setCurrentStep(1)}
+            onBack={() => setCurrentStep(0)}
           />
         );
       case 1:
@@ -498,7 +523,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
               setSelectedProductName(name);
               setCurrentStep(2);
             }}
-            onBack={isAdmin ? () => setCurrentStep(0) : undefined}
+            onBack={isAdmin ? () => setCurrentStep(20) : undefined}
           />
         );
       case 2:
@@ -688,15 +713,15 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
   // Questions, 5 Chat] (Support path) OR [6 Timeline] (Development path), 7 Details.
   const isDevelopmentPath = ticketType === 'DEVELOPMENT';
   const stepPath = isDevelopmentPath
-    ? (isAdmin ? [0, 1, 2, 6, 7] : [1, 2, 6, 7])
-    : (isAdmin ? [0, 1, 2, 3, 4, 5, 7] : [1, 2, 3, 4, 5, 7]);
+    ? (isAdmin ? [0, 20, 1, 2, 6, 7] : [1, 2, 6, 7])
+    : (isAdmin ? [0, 20, 1, 2, 3, 4, 5, 7] : [1, 2, 3, 4, 5, 7]);
 
   const tabs = isDevelopmentPath
     ? (isAdmin
-        ? [t('wizard.stepCustomer'), t('wizard.stepProduct'), t('wizard.stepTicketType'), t('wizard.stepTimeline'), t('wizard.stepDetails')]
+        ? [t('wizard.stepCustomer'), t('wizard.stepFollowers'), t('wizard.stepProduct'), t('wizard.stepTicketType'), t('wizard.stepTimeline'), t('wizard.stepDetails')]
         : [t('wizard.stepProduct'), t('wizard.stepTicketType'), t('wizard.stepTimeline'), t('wizard.stepDetails')])
     : (isAdmin
-        ? [t('wizard.stepCustomer'), t('wizard.stepProduct'), t('wizard.stepTicketType'), t('wizard.stepCategory'), t('wizard.stepQuestions'), t('wizard.stepChat'), t('wizard.stepDetails')]
+        ? [t('wizard.stepCustomer'), t('wizard.stepFollowers'), t('wizard.stepProduct'), t('wizard.stepTicketType'), t('wizard.stepCategory'), t('wizard.stepQuestions'), t('wizard.stepChat'), t('wizard.stepDetails')]
         : [t('wizard.stepProduct'), t('wizard.stepTicketType'), t('wizard.stepCategory'), t('wizard.stepQuestions'), t('wizard.stepChat'), t('wizard.stepDetails')]);
 
   const getStepProgress = () => {

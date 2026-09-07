@@ -10,11 +10,12 @@ import { OrganizationProductsTab } from './OrganizationProductsTab';
 import { OrganizationContractsTab } from './OrganizationContractsTab';
 import { OrganizationOverviewTab } from './OrganizationOverviewTab';
 import { OrganizationAuditTab } from './OrganizationAuditTab';
+import { OrganizationTicketsTab } from './OrganizationTicketsTab';
 
 interface OrganizationDetailsProps {
   organization: Tenant;
   users: Profile[];
-  initialTab?: 'overview' | 'users' | 'products' | 'contracts' | 'audit';
+  initialTab?: 'overview' | 'users' | 'products' | 'tickets' | 'contracts' | 'audit';
   onBack: () => void;
   onEdit: (org: Tenant) => void;
   onDeactivate?: (org: Tenant) => void;
@@ -32,7 +33,7 @@ export const OrganizationDetails: React.FC<OrganizationDetailsProps> = ({
   onRefresh,
   onUserClick
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'products' | 'contracts' | 'audit'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'products' | 'tickets' | 'contracts' | 'audit'>(initialTab);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
 
   React.useEffect(() => {
@@ -184,14 +185,14 @@ export const OrganizationDetails: React.FC<OrganizationDetailsProps> = ({
         {/* Tabs & Content */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
           <div className="flex border-b border-slate-200 px-2 pt-2 bg-slate-50/50">
-            {['overview', 'users', 'products', 'contracts', 'audit'].map((tab) => (
+            {['overview', 'users', 'products', 'tickets', 'contracts', 'audit'].map((tab) => (
               <button
                 key={tab}
-                onClick={() => ['overview', 'users', 'products', 'contracts', 'audit'].includes(tab) && setActiveTab(tab as any)}
+                onClick={() => ['overview', 'users', 'products', 'tickets', 'contracts', 'audit'].includes(tab) && setActiveTab(tab as any)}
                 className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors capitalize ${
                   activeTab === tab 
                     ? 'border-teal-500 text-teal-700 bg-white' 
-                    : ['overview', 'users', 'products', 'contracts', 'audit'].includes(tab)
+                    : ['overview', 'users', 'products', 'tickets', 'contracts', 'audit'].includes(tab)
                       ? 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/50'
                       : 'border-transparent text-slate-300 cursor-not-allowed'
                 }`}
@@ -218,6 +219,10 @@ export const OrganizationDetails: React.FC<OrganizationDetailsProps> = ({
 
             {activeTab === 'products' && (
               <OrganizationProductsTab organization={organization} />
+            )}
+
+            {activeTab === 'tickets' && (
+              <OrganizationTicketsTab organization={organization} />
             )}
 
             {activeTab === 'contracts' && (

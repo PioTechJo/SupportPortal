@@ -8,6 +8,7 @@ export interface RecipientContext {
   assigneeId?: string | null;
   developerId?: string | null;
   createdById?: string | null;
+  followerIds?: string[];
 }
 
 async function emailForUserId(userId?: string | null): Promise<string | null> {
@@ -40,6 +41,16 @@ export async function resolveRecipientEmails(
       case 'customer': {
         const email = await emailForUserId(ctx.createdById);
         if (email) emails.add(email);
+        // Bank users the admin picked to follow this ticket — added on top of
+        // (not instead of) the ticket creator, since an admin-created ticket's
+        // creator is the admin, not anyone at the bank.
+        if (ctx.followerIds && ctx.followerIds.length > 0) {
+          const { data: followerUsers } = await supabase
+            .from('users')
+            .select('email')
+            .in('id', ctx.followerIds);
+          (followerUsers || []).forEach((u: any) => u.email && emails.add(u.email));
+        }
         break;
       }
       case 'admin': {

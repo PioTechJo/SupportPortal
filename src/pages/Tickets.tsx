@@ -393,17 +393,22 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
     });
 
     const exportData = exportRows.map((ticket: any) => ({
-      'Ticket #': ticket.ticket_no || '',
-      'Subject': ticket.title,
-      'Priority': ticket.priority,
-      'Status': ticket.status_code || ticket.status,
-      'Customer': ticket.customer_name || '',
+      'Status': ticket.status_name || ticket.status_code || ticket.status || '',
+      'Ticket ID': (ticket.ticket_no || '').split(' - ')[0] || '',
+      'Creator': ticket.creator_name || '',
+      'Tiket #': ticket.ticket_no || '',
+      'Synopsis': ticket.title || '',
+      'Severity': ticket.ticket_type === 'DEVELOPMENT' ? '' : (ticket.priority_name || ''),
       'Assigned To': ticket.assigned_to_name || 'Unassigned',
-      'Legacy Assignee': ticket.legacy_assigned_to || '',
-      'Created': new Date(ticket.created_at).toLocaleDateString(),
+      'Opened Date': ticket.created_at ? new Date(ticket.created_at) : '',
+      'Due Date': ticket.sla_due_date ? new Date(ticket.sla_due_date) : '',
+      'Closed': ticket.closed_at ? new Date(ticket.closed_at) : '',
+      'Account Name': ticket.customer_name || '',
+      'Problem Description': ticket.description || '',
+      'Solution': ticket.resolution_justification || '',
     }));
 
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const worksheet = XLSX.utils.json_to_sheet(exportData, { cellDates: true });
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Tickets');
     XLSX.writeFile(workbook, `Tickets_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
