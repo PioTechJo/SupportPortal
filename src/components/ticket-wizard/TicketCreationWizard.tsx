@@ -369,6 +369,14 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
         const adminIds = (adminRows || []).map((row: any) => row.id);
         const ticketNo = ticket.ticket_no;
 
+        const { data: customerData } = await supabase
+          .from('customers')
+          .select('customer_name')
+          .eq('id', selectedCustomerId)
+          .maybeSingle();
+        const customerName = customerData?.customer_name || '';
+        const createdByName = (user as any)?.full_name || (user as any)?.name || user?.email || 'Customer';
+
         if (adminIds.length > 0) {
           const notificationsPayload = adminIds.map((adminId: string) => ({
             profile_id: adminId,
@@ -384,10 +392,18 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
             console.error("Supabase notification insert error:", insertError);
           }
 
-          const adminEmailVars = { ticket_no: ticketNo, subject: title, created_by_email: user?.email || 'Customer' };
+          const adminEmailVars = {
+            ticket_no: ticketNo,
+            subject: title,
+            description,
+            created_by_email: user?.email || 'Customer',
+            created_by_name: createdByName,
+            customer_name: customerName,
+            product_name: selectedProductName,
+          };
           const adminEmailFallback = {
             subject: `New ticket ${ticketNo} has been created by ${user?.email || 'Customer'} - ${title}`,
-            body: `Hello Admin,\n\nA new ticket has been created:\n\nTicket No: ${ticketNo}\nSubject: ${title}\nCreated By: ${user?.email || 'Customer'}\n\nPlease review the ticket in the admin portal.`,
+            body: `Dears,\n\nA Portal Ticket has been opened by ${createdByName} , ${customerName} as a ${selectedProductName} .\n\nKindly check the Ticket title ${title} , problem description is ${description}, the ticket ID no. is ${ticketNo} and edit the ticket severity, other details, in order to send a Ticket Submitted Email to the customer ASAP.\n\nBest Regards,`,
             defaultRoles: ['admin']
           };
           getEmailDispatch('NEW_TICKET_ADMIN', adminEmailVars, { createdById: user?.id, followerIds: selectedFollowerIds }, adminEmailFallback)
@@ -402,16 +418,19 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
 
         // Send email to the customer
         if (user?.email) {
+          const formatEmailDate = (d: Date) =>
+            d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
           const customerEmailVars = {
             ticket_no: ticketNo,
             subject: title,
-            start_date: createdAt.toLocaleDateString(),
-            end_date: slaDueDate.toLocaleDateString(),
+            description,
+            start_date: formatEmailDate(createdAt),
+            end_date: formatEmailDate(slaDueDate),
             priority: isDevelopmentTicket ? 'N/A' : priorityName
           };
           const customerEmailFallback = {
             subject: `Your ticket ${ticketNo} has been created`,
-            body: `Hello,\n\nYour ticket ${ticketNo} has been created and is being reviewed.\n\nSubject: ${title}\n\nWe will get back to you shortly.`,
+            body: `Dears,\n\nWe received your request ticket number ${ticketNo}.\n\nIt is forwarded to the department in charge who will contact you soon to handle your request.\nPlease refer to the above ticket number for any future communication in relation to this issue.\n\nTickets Details:\n\nThe Ticket title is ${title} , And problem description is ${description} .\n\n- Priority : ${customerEmailVars.priority}\n- Expected Start Date : ${customerEmailVars.start_date}\n- Expected End Date : ${customerEmailVars.end_date}\n\nBest regards,\n\nPio-Tech Support Team`,
             defaultRoles: ['customer']
           };
           getEmailDispatch('NEW_TICKET_CUSTOMER', customerEmailVars, { createdById: user?.id, followerIds: selectedFollowerIds }, customerEmailFallback)
