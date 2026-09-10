@@ -15,13 +15,22 @@ function buildAttachmentBase64(list: any[]): string {
   const worksheet = XLSX.utils.json_to_sheet(
     list.length > 0
       ? list.map(t => ({
-          'Ticket No': t.ticket_no,
-          'Subject': t.subject,
-          'Status': t.status_name,
-          'Days Open': t.days_open,
+          'Ticket ID': t.ticket_id || '',
+          'Current Status': 'Under Process',
+          'Status': t.status_name || '',
+          'Opened Date': t.opened_date ? new Date(t.opened_date) : '',
+          'Due Date': t.due_date ? new Date(t.due_date) : '',
+          'Assigned To': t.assigned_to_name || 'Unassigned',
+          'Severity': t.severity || '',
+          'Tiket #': t.ticket_no || '',
+          'Synopsis': t.subject || '',
+          'Closed': t.closed_date ? new Date(t.closed_date) : '',
+          'Problem Description': t.description || '',
+          'Solution': t.solution || '',
+          'Account Name': t.account_name || '',
         }))
-      : [{ 'Ticket No': '', Subject: 'No pending tickets', Status: '', 'Days Open': '' }]
-  );
+      : [{ 'Ticket ID': '', 'Current Status': '', Status: 'No pending tickets', 'Opened Date': '', 'Due Date': '', 'Assigned To': '', Severity: '', 'Tiket #': '', Synopsis: '', Closed: '', 'Problem Description': '', Solution: '', 'Account Name': '' }]
+  , { cellDates: true });
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Pending Tickets');
   // Get the raw bytes and base64-encode them ourselves with btoa, rather than
@@ -58,19 +67,21 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // The daily report splits into two separate emails:
+    // The daily report splits into two separate emails, each with its own
+    // dedicated recipient setting (neither reuses the general-purpose
+    // "Support Group" mailbox used by other notification templates):
     //   1. Every pending ticket, regardless of assignee -> daily_report_all_recipients.
-    //   2. Only pending tickets assigned to a Support team member -> support_group_email.
-    const [{ data: allRecipientsSetting }, { data: supportGroupSetting }] = await Promise.all([
+    //   2. Only pending tickets assigned to a Support team member -> daily_report_support_recipients.
+    const [{ data: allRecipientsSetting }, { data: supportRecipientsSetting }] = await Promise.all([
       supabase.from('system_settings').select('setting_value').eq('setting_key', 'daily_report_all_recipients').maybeSingle(),
-      supabase.from('system_settings').select('setting_value').eq('setting_key', 'support_group_email').maybeSingle(),
+      supabase.from('system_settings').select('setting_value').eq('setting_key', 'daily_report_support_recipients').maybeSingle(),
     ]);
 
     const parseRecipients = (value: string | undefined | null) =>
       (value || '').split(',').map((e: string) => e.trim()).filter(Boolean);
 
     const allRecipients = parseRecipients(allRecipientsSetting?.setting_value);
-    const supportRecipients = parseRecipients(supportGroupSetting?.setting_value);
+    const supportRecipients = parseRecipients(supportRecipientsSetting?.setting_value);
 
     // Pending tickets list (each row flags whether its assignee is on the Support team)
     const { data: pendingTickets, error: pendingError } = await supabase.rpc('get_pending_tickets_list');
