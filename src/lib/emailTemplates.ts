@@ -62,6 +62,21 @@ export async function resolveRecipientEmails(
         }
         break;
       }
+      case 'management_escalation': {
+        // CEO / Deputy / PS Director / Support Manager aren't system users yet —
+        // same fixed-mailbox-list pattern as support_group, just a different setting.
+        const { data: setting } = await supabase
+          .from('system_settings')
+          .select('setting_value')
+          .eq('setting_key', 'management_escalation_recipients')
+          .maybeSingle();
+        (setting?.setting_value || '')
+          .split(',')
+          .map((e: string) => e.trim())
+          .filter(Boolean)
+          .forEach((e: string) => emails.add(e));
+        break;
+      }
       case 'support_group': {
         // A fixed shared mailbox/alias (e.g. support.team@pio-tech.com), editable
         // by admins from the Email Templates page — not a per-user lookup.

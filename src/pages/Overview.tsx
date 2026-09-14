@@ -220,7 +220,7 @@ export const Overview: React.FC = () => {
   };
 
   // --- Analytics Metrics Extraction ---
-  const metrics = analyticsData?.metrics || { new_tickets: 0, reopened_tickets: 0, in_progress_tickets: 0, development_action_tickets: 0, closed_tickets: 0 };
+  const metrics = analyticsData?.metrics || { new_tickets: 0, reopened_tickets: 0, in_progress_tickets: 0, development_action_tickets: 0, closed_tickets: 0, management_escalated_tickets: 0 };
   const customerListData = analyticsData?.ticketsByBankAll || [];
   const bankListFilteredData = useMemo(() => {
     return customerListData.filter((bank: any) => bank.name.toLowerCase().includes(bankListSearch.toLowerCase()));
@@ -387,18 +387,18 @@ export const Overview: React.FC = () => {
 
       {/* Analytics Metrics Cards */}
       {analyticsLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 animate-pulse">
-          {[1,2,3,4,5,6].map(i => <div key={i} className="bg-white h-24 rounded-xl border border-slate-200" />)}
+        <div className="grid grid-cols-1 md:grid-cols-7 gap-4 animate-pulse">
+          {[1,2,3,4,5,6,7].map(i => <div key={i} className="bg-white h-24 rounded-xl border border-slate-200" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4">
           <div 
-            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between cursor-pointer hover:bg-slate-50 transition"
+            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-start cursor-pointer hover:bg-slate-50 transition"
             onClick={() => navigate('/tickets?status=new')}
           >
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs uppercase font-bold tracking-wider">{t('overview.new')}</span>
-              <Inbox size={18} className="text-blue-600" />
+              <span className="text-xs uppercase font-bold tracking-normal truncate min-w-0 flex-1">{t('overview.new')}</span>
+              <Inbox size={18} className="text-blue-600 shrink-0" />
             </div>
             <div className="mt-2.5">
               <span className="text-3xl font-bold text-slate-900">{metrics.new_tickets}</span>
@@ -407,12 +407,12 @@ export const Overview: React.FC = () => {
           </div>
 
           <div 
-            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between cursor-pointer hover:bg-slate-50 transition"
+            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-start cursor-pointer hover:bg-slate-50 transition"
             onClick={() => navigate('/tickets?status=reopened')}
           >
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs uppercase font-bold tracking-wider">{t('overview.reopened')}</span>
-              <RotateCcw size={18} className="text-indigo-600" />
+              <span className="text-xs uppercase font-bold tracking-normal truncate min-w-0 flex-1">{t('overview.reopened')}</span>
+              <RotateCcw size={18} className="text-indigo-600 shrink-0" />
             </div>
             <div className="mt-2.5">
               <span className="text-3xl font-bold text-slate-900">{metrics.reopened_tickets}</span>
@@ -421,12 +421,12 @@ export const Overview: React.FC = () => {
           </div>
           
           <div 
-            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between cursor-pointer hover:bg-slate-50 transition"
+            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-start cursor-pointer hover:bg-slate-50 transition"
             onClick={() => navigate('/tickets?status=in_progress')}
           >
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs uppercase font-bold tracking-wider">{t('overview.inProgress')}</span>
-              <Activity size={18} className="text-blue-500" />
+              <span className="text-xs uppercase font-bold tracking-normal truncate min-w-0 flex-1">{t('overview.inProgress')}</span>
+              <Activity size={18} className="text-blue-500 shrink-0" />
             </div>
             <div className="mt-2.5">
               <span className="text-3xl font-bold text-slate-900">{metrics.in_progress_tickets}</span>
@@ -435,12 +435,12 @@ export const Overview: React.FC = () => {
           </div>
 
           <div
-            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between cursor-pointer hover:bg-slate-50 transition"
+            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-start cursor-pointer hover:bg-slate-50 transition"
             onClick={() => navigate('/tickets?status=development_action')}
           >
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs uppercase font-bold tracking-wider">{t('overview.developmentAction')}</span>
-              <Activity size={18} className="text-indigo-600" />
+              <span className="text-xs uppercase font-bold tracking-normal truncate min-w-0 flex-1">{t('overview.developmentAction')}</span>
+              <Activity size={18} className="text-indigo-600 shrink-0" />
             </div>
             <div className="mt-2.5">
               <span className="text-3xl font-bold text-slate-900">{metrics.development_action_tickets ?? 0}</span>
@@ -449,12 +449,12 @@ export const Overview: React.FC = () => {
           </div>
 
           <div
-            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between cursor-pointer hover:bg-slate-50 transition"
+            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-start cursor-pointer hover:bg-slate-50 transition"
             onClick={() => navigate('/tickets?escalated=true')}
           >
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs uppercase font-bold tracking-wider">{t('overview.escalated')}</span>
-              <AlertTriangle size={18} className="text-red-500" />
+              <span className="text-xs uppercase font-bold tracking-normal truncate min-w-0 flex-1">{t('overview.escalated')}</span>
+              <AlertTriangle size={18} className="text-red-500 shrink-0" />
             </div>
             <div className="mt-2.5">
               <span className="text-3xl font-bold text-slate-900">{escalationMetrics.totalEscalations}</span>
@@ -462,13 +462,27 @@ export const Overview: React.FC = () => {
             </div>
           </div>
 
-          <div 
-            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between cursor-pointer hover:bg-slate-50 transition"
+          <div
+            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-start cursor-pointer hover:bg-slate-50 transition"
+            onClick={() => navigate('/tickets?managementEscalated=true')}
+          >
+            <div className="flex items-center justify-between text-slate-400">
+              <span className="text-xs uppercase font-bold tracking-normal truncate min-w-0 flex-1">{t('overview.managementEscalated')}</span>
+              <ShieldAlert size={18} className="text-red-600 shrink-0" />
+            </div>
+            <div className="mt-2.5">
+              <span className="text-3xl font-bold text-slate-900">{metrics.management_escalated_tickets ?? 0}</span>
+              <span className="text-[10.5px] text-slate-500 block mt-1">{t('overview.managementEscalatedDesc')}</span>
+            </div>
+          </div>
+
+          <div
+            className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-start cursor-pointer hover:bg-slate-50 transition"
             onClick={() => navigate('/tickets?status=closed')}
           >
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs uppercase font-bold tracking-wider">{t('overview.closed')}</span>
-              <CheckCircle2 size={18} className="text-emerald-600" />
+              <span className="text-xs uppercase font-bold tracking-normal truncate min-w-0 flex-1">{t('overview.closed')}</span>
+              <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
             </div>
             <div className="mt-2.5">
               <span className="text-3xl font-bold text-slate-900">{metrics.closed_tickets}</span>

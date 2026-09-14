@@ -26,6 +26,9 @@ export const EmailTemplates: React.FC = () => {
   const [supportGroupEmail, setSupportGroupEmail] = useState('');
   const [savingSupportGroup, setSavingSupportGroup] = useState(false);
 
+  const [managementEscalationEmail, setManagementEscalationEmail] = useState('');
+  const [savingManagementEscalation, setSavingManagementEscalation] = useState(false);
+
   const subjectRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const lastFocusedField = useRef<'subject' | 'body'>('body');
@@ -33,9 +36,10 @@ export const EmailTemplates: React.FC = () => {
   useEffect(() => {
     const fetchTemplates = async () => {
       setLoading(true);
-      const [{ data, error }, { data: settingRow }] = await Promise.all([
+      const [{ data, error }, { data: settingRow }, { data: mgmtSettingRow }] = await Promise.all([
         supabase.from('email_templates').select('*').order('trigger_label'),
         supabase.from('system_settings').select('setting_value').eq('setting_key', 'support_group_email').maybeSingle(),
+        supabase.from('system_settings').select('setting_value').eq('setting_key', 'management_escalation_recipients').maybeSingle(),
       ]);
       if (!error && data) {
         setTemplates(data as EmailTemplateRow[]);
@@ -47,6 +51,7 @@ export const EmailTemplates: React.FC = () => {
         }
       }
       if (settingRow?.setting_value != null) setSupportGroupEmail(settingRow.setting_value);
+      if (mgmtSettingRow?.setting_value != null) setManagementEscalationEmail(mgmtSettingRow.setting_value);
       setLoading(false);
     };
     fetchTemplates();
@@ -70,6 +75,27 @@ export const EmailTemplates: React.FC = () => {
       setMessage({ text: 'Failed to save Support Group email', type: 'error' });
     } finally {
       setSavingSupportGroup(false);
+    }
+  };
+
+  const handleSaveManagementEscalationEmail = async () => {
+    setSavingManagementEscalation(true);
+    setMessage(null);
+    try {
+      const { error } = await supabase
+        .from('system_settings')
+        .upsert(
+          { setting_key: 'management_escalation_recipients', setting_value: managementEscalationEmail.trim(), updated_at: new Date().toISOString() },
+          { onConflict: 'setting_key' }
+        );
+      if (error) throw error;
+      setMessage({ text: 'Management Escalation recipients saved', type: 'success' });
+      setTimeout(() => setMessage(null), 3000);
+    } catch (err) {
+      console.error('Error saving management escalation recipients:', err);
+      setMessage({ text: 'Failed to save Management Escalation recipients', type: 'error' });
+    } finally {
+      setSavingManagementEscalation(false);
     }
   };
 
@@ -196,6 +222,28 @@ export const EmailTemplates: React.FC = () => {
           className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 shrink-0"
         >
           {savingSupportGroup ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> : <Save size={16} />}
+          Save
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-6 flex flex-col sm:flex-row sm:items-end gap-3">
+        <div className="flex-1">
+          <label className="block text-sm font-semibold text-slate-700 mb-1.5">Management Escalation Recipients</label>
+          <p className="text-xs text-slate-500 mb-2">CEO / Deputy / PS Director / Support Manager addresses used by the "Management Escalation Recipients" recipient option below. Comma-separated for multiple addresses.</p>
+          <input
+            type="text"
+            value={managementEscalationEmail}
+            onChange={(e) => setManagementEscalationEmail(e.target.value)}
+            placeholder="ceo@pio-tech.com, deputy@pio-tech.com, ps.director@pio-tech.com, support.manager@pio-tech.com"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-[#f97316] focus:border-[#f97316]"
+          />
+        </div>
+        <button
+          onClick={handleSaveManagementEscalationEmail}
+          disabled={savingManagementEscalation}
+          className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 shrink-0"
+        >
+          {savingManagementEscalation ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> : <Save size={16} />}
           Save
         </button>
       </div>

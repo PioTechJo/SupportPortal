@@ -148,6 +148,65 @@ export const TicketDetail: React.FC = () => {
 
   const canEditSlaDueDate = isAdmin || ticket?.assigned_to === user?.id;
 
+  const [isEscalatingToManagement, setIsEscalatingToManagement] = useState(false);
+  const [managementEscalationNote, setManagementEscalationNote] = useState("");
+  const [savingManagementEscalation, setSavingManagementEscalation] = useState(false);
+  const [managementEscalationError, setManagementEscalationError] = useState<string | null>(null);
+
+  const canEscalateToManagement = ticket?.created_by === user?.id && !ticket?.is_management_escalated;
+
+  const handleEscalateToManagement = async () => {
+    if (!id) return;
+    if (!managementEscalationNote.trim()) {
+      setManagementEscalationError(t("ticketDetail.managementEscalationNoteRequired"));
+      return;
+    }
+    setSavingManagementEscalation(true);
+    setManagementEscalationError(null);
+    try {
+      const { error } = await supabase.rpc("escalate_ticket_to_management", {
+        p_ticket_id: id,
+        p_note: managementEscalationNote.trim(),
+      });
+      if (error) throw error;
+
+      setTicket({
+        ...ticket,
+        is_management_escalated: true,
+        management_escalation_note: managementEscalationNote.trim(),
+      });
+      setIsEscalatingToManagement(false);
+
+      getEmailDispatch(
+        "MANAGEMENT_ESCALATION",
+        {
+          ticket_no: ticket?.ticket_no || "",
+          subject: ticket?.title || ticket?.subject || "",
+          customer_name: ticket?.customer?.customer_name || "",
+          escalated_by_name: (user as any)?.full_name || (user as any)?.name || user?.email || "",
+          escalation_note: managementEscalationNote.trim(),
+        },
+        { assigneeId: ticket?.assigned_to, createdById: ticket?.created_by, followerIds },
+        {
+          subject: `Management Escalation - Ticket ${ticket?.ticket_no || ""}`,
+          body: `Ticket ${ticket?.ticket_no} has been escalated to management.\n\nNote: ${managementEscalationNote.trim()}`,
+          defaultRoles: ["management_escalation"],
+        },
+      ).then(({ subject, body, recipientEmails }) => {
+        recipientEmails.forEach((email) => {
+          supabase.functions
+            .invoke("send-email", { body: { to: email, subject, body, ticket_id: id } })
+            .catch((err) => console.error("Error sending management escalation email:", err));
+        });
+      });
+    } catch (err: any) {
+      console.error("Error escalating to management", err);
+      setManagementEscalationError(err.message || "Failed to escalate to management.");
+    } finally {
+      setSavingManagementEscalation(false);
+    }
+  };
+
   const openSlaDueDateEditor = () => {
     setSlaDueDateDraft(
       ticket?.sla_due_date
@@ -1561,6 +1620,11 @@ export const TicketDetail: React.FC = () => {
                 {t('ticketDetail.developmentTicket')}
               </span>
             )}
+            {ticket.is_management_escalated && (
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold ms-1 bg-red-100 text-red-700 border border-red-200">
+                {t('ticketDetail.managementEscalated')}
+              </span>
+            )}
           </div>
           <div className="h-4 w-px bg-slate-300 ms-1"></div>
           <h1 className="text-xl font-bold text-slate-900 line-clamp-1 pe-4 ms-1">
@@ -1570,6 +1634,19 @@ export const TicketDetail: React.FC = () => {
 
         {/* Actions Container */}
         <div className="flex items-center gap-3 shrink-0">
+          {canEscalateToManagement && (
+            <button
+              onClick={() => {
+                setManagementEscalationNote("");
+                setManagementEscalationError(null);
+                setIsEscalatingToManagement(true);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg text-sm font-medium transition-colors shadow-sm"
+            >
+              <AlertCircle size={16} />{t("ticketDetail.escalateToManagement")}
+            </button>
+          )}
+
           {/* Client Specific Actions */}
           {(isClient || isAdmin) &&
             ["CLOSED", "APPROVED"].includes(
@@ -2323,6 +2400,54 @@ export const TicketDetail: React.FC = () => {
                           className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 rounded-lg"
                         >
                           {savingSlaDueDate ? "Saving..." : "Save"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {isEscalatingToManagement && (
+                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-bold text-slate-800">
+                        {t("ticketDetail.escalateToManagement")}
+                      </h3>
+                      <button onClick={() => setIsEscalatingToManagement(false)} className="text-slate-400 hover:text-slate-600">
+                        <X size={18} />
+                      </button>
+                    </div>
+                    <div className="space-y-3">
+                      <p className="text-xs text-slate-500">{t("ticketDetail.escalateToManagementDescription")}</p>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">
+                          {t("ticketDetail.managementEscalationNote")}
+                        </label>
+                        <textarea
+                          value={managementEscalationNote}
+                          onChange={(e) => setManagementEscalationNote(e.target.value)}
+                          rows={4}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-red-500"
+                          placeholder={t("ticketDetail.managementEscalationNotePlaceholder")}
+                        />
+                      </div>
+                      {managementEscalationError && (
+                        <div className="text-xs text-red-600">{managementEscalationError}</div>
+                      )}
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button
+                          onClick={() => setIsEscalatingToManagement(false)}
+                          className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 rounded-lg"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleEscalateToManagement}
+                          disabled={savingManagementEscalation || !managementEscalationNote.trim()}
+                          className="px-3 py-1.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg"
+                        >
+                          {savingManagementEscalation ? "Saving..." : t("ticketDetail.escalateToManagement")}
                         </button>
                       </div>
                     </div>
