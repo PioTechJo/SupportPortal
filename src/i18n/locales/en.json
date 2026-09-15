@@ -300,6 +300,7 @@
     "returnedOn": "Returned on",
     "markAsReturned": "Mark as Returned",
     "noComments": "No comments yet.",
+    "commentPostFailed": "Failed to post comment. Please try again.",
     "typeComment": "Type a comment...",
     "ticketDetails": "Ticket Details",
     "status": "Status",

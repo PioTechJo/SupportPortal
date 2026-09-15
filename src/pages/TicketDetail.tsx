@@ -513,33 +513,41 @@ export const TicketDetail: React.FC = () => {
     };
   }, [id]);
 
+  const [postingComment, setPostingComment] = useState(false);
+
   const handleAddComment = async () => {
-    if (!newComment.trim() || !user || !id) return;
+    if (!newComment.trim() || !user || !id || postingComment) return;
 
-    const { data, error } = await supabase
-      .from("ticket_comments")
-      .insert({
-        ticket_id: id,
-        author_id: user.id,
-        comment_text: newComment,
-        is_system_generated: false,
-      })
-      .select(
-        "id, comment_text, is_system_generated, created_at, author_id, is_internal, escalated_team_id, escalated_developer_name, teams(team_name)",
-      )
-      .single();
+    setPostingComment(true);
+    try {
+      const { data, error } = await supabase
+        .from("ticket_comments")
+        .insert({
+          ticket_id: id,
+          author_id: user.id,
+          comment_text: newComment,
+          is_system_generated: false,
+        })
+        .select(
+          "id, comment_text, is_system_generated, created_at, author_id, is_internal, escalated_team_id, escalated_developer_name, teams(team_name)",
+        )
+        .single();
 
-    if (!error && data) {
-      setComments([
-        ...comments,
-        {
-          ...data,
-          author_name: user.full_name || "You",
-        },
-      ]);
-      setNewComment("");
-    } else if (error) {
-      console.error("Error adding comment:", error);
+      if (!error && data) {
+        setComments([
+          ...comments,
+          {
+            ...data,
+            author_name: user.full_name || "You",
+          },
+        ]);
+        setNewComment("");
+      } else if (error) {
+        console.error("Error adding comment:", error);
+        alert(t("ticketDetail.commentPostFailed"));
+      }
+    } finally {
+      setPostingComment(false);
     }
   };
 
@@ -2274,10 +2282,14 @@ export const TicketDetail: React.FC = () => {
                 />
                 <button
                   onClick={handleAddComment}
-                  disabled={!newComment.trim()}
+                  disabled={!newComment.trim() || postingComment}
                   className="absolute bottom-3 end-3 w-8 h-8 bg-[#3B82F6] hover:bg-[#2563eb] disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-md flex items-center justify-center transition-colors shadow-sm"
                 >
-                  <Send size={14} />
+                  {postingComment ? (
+                    <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <Send size={14} />
+                  )}
                 </button>
               </div>
             </div>

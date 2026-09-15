@@ -300,6 +300,7 @@
     "returnedOn": "أُعيدت في",
     "markAsReturned": "تحديد كمرجعة",
     "noComments": "لا توجد تعليقات حتى الآن.",
+    "commentPostFailed": "فشل إرسال التعليق. حاول مرة أخرى.",
     "typeComment": "اكتب تعليقاً...",
     "ticketDetails": "تفاصيل التذكرة",
     "status": "الحالة",

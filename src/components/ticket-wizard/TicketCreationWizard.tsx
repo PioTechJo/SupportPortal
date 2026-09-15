@@ -8,9 +8,6 @@ import { StepFollowers } from './StepFollowers';
 import { Step1Product } from './Step1Product';
 import { StepTicketType, TicketType } from './StepTicketType';
 import { StepTimeline } from './StepTimeline';
-import { Step2Category } from './Step2Category';
-import { Step3Questions } from './Step3Questions';
-import { StepChat } from './StepChat';
 import { Step4Details } from './Step4Details';
 import { X, Check, Brain, AlertCircle, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -205,53 +202,11 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
         isAutoFlagged = false;
         slaDueDate = neededByDate ? new Date(neededByDate) : slaDueDate;
       } else {
-        // 0. Calculate Severity Score
-        let scorePercentage = 30; // Default if 0 questions answered
-
-        const answerEntries = Object.entries(answers);
-        const answeredCount = answerEntries.length;
-        let maxPossibleScore = 0;
-
-        if (answeredCount > 0) {
-          // Fetch all point values for these answers
-          const questionIds = answerEntries.map(e => e[0]);
-          const { data: optionsData } = await supabase
-            .from('ai_question_options')
-            .select('question_id, option_value, point_value')
-            .in('question_id', questionIds);
-
-          if (optionsData) {
-            answerEntries.forEach(([qId, val]) => {
-              const opt = optionsData.find(o => o.question_id === qId && o.option_value === val);
-              if (opt && opt.point_value) {
-                diagnosticScore += Number(opt.point_value);
-              }
-            });
-          }
-
-          maxPossibleScore = answeredCount * 10; // Assuming max 10 points per question
-          scorePercentage = maxPossibleScore > 0 ? (diagnosticScore / maxPossibleScore) * 100 : 0;
-        }
-
-        // Determine priorityName based on scorePercentage
-        if (skippedDiagnostics) {
-          // Category + Questions were skipped — no diagnostic signal to score, so default to Low.
-          priorityName = 'Low';
-        } else if (scorePercentage >= 70) {
-          priorityName = 'Urgent';
-        } else if (scorePercentage >= 50) {
-          priorityName = 'High';
-        } else if (scorePercentage >= 30) {
-          priorityName = 'Medium';
-        }
-
-        console.log('[DEBUG] Severity Calculation:', {
-          answeredCount,
-          diagnosticScore,
-          maxPossibleScore,
-          scorePercentage,
-          priorityName
-        });
+        // The diagnostic Category/Questions steps have been removed from the
+        // wizard entirely — Support tickets no longer carry a severity signal
+        // to score, so they always default to Low (matching the old "skip
+        // diagnostics" behavior, which is now simply the only behavior).
+        priorityName = 'Low';
 
         // Fetch corresponding priority ID
         const { data: targetPriorityData } = await supabase
@@ -551,56 +506,9 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
             selectedType={ticketType}
             onSelect={(type) => {
               setTicketType(type);
-              setCurrentStep(type === 'DEVELOPMENT' ? 6 : 3);
+              setCurrentStep(type === 'DEVELOPMENT' ? 6 : 7);
             }}
             onBack={() => setCurrentStep(1)}
-          />
-        );
-      case 3:
-        return (
-          <Step2Category
-            productId={selectedProductId}
-            productName={selectedProductName}
-            selectedCategoryId={selectedCategoryId}
-            onSelect={(id, name) => {
-              setSelectedCategoryId(id);
-              setSelectedCategoryName(name);
-              setSkippedDiagnostics(false);
-              setCurrentStep(4);
-            }}
-            onBack={() => setCurrentStep(2)}
-            onSkip={() => {
-              setSelectedCategoryId('');
-              setSelectedCategoryName('');
-              setAnswers({});
-              setSkippedDiagnostics(true);
-              setCurrentStep(5);
-            }}
-          />
-        );
-      case 4:
-        return (
-          <Step3Questions
-            categoryId={selectedCategoryId}
-            productName={selectedProductName}
-            categoryName={selectedCategoryName}
-            answers={answers}
-            setAnswers={setAnswers}
-            onBack={() => setCurrentStep(3)}
-            onNext={async () => {
-              await checkForDuplicates();
-              setCurrentStep(5);
-            }}
-          />
-        );
-      case 5:
-        return (
-          <StepChat
-            chatHistory={chatHistory}
-            setChatHistory={setChatHistory}
-            onSkip={() => setCurrentStep(7)}
-            onNext={() => setCurrentStep(7)}
-            selectedProductId={selectedProductId}
           />
         );
       case 6:
@@ -659,7 +567,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
               onAddAttachments={handleAddAttachments}
               onRemoveAttachment={handleRemoveAttachment}
               attachmentError={attachmentError}
-              onBack={() => setCurrentStep(ticketType === 'DEVELOPMENT' ? 6 : 5)}
+              onBack={() => setCurrentStep(ticketType === 'DEVELOPMENT' ? 6 : 2)}
               onSubmit={handleSubmit}
               isSubmitting={isSubmitting}
               error={error}
@@ -733,15 +641,15 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
   const isDevelopmentPath = ticketType === 'DEVELOPMENT';
   const stepPath = isDevelopmentPath
     ? (isAdmin ? [0, 20, 1, 2, 6, 7] : [1, 2, 6, 7])
-    : (isAdmin ? [0, 20, 1, 2, 3, 4, 5, 7] : [1, 2, 3, 4, 5, 7]);
+    : (isAdmin ? [0, 20, 1, 2, 7] : [1, 2, 7]);
 
   const tabs = isDevelopmentPath
     ? (isAdmin
         ? [t('wizard.stepCustomer'), t('wizard.stepFollowers'), t('wizard.stepProduct'), t('wizard.stepTicketType'), t('wizard.stepTimeline'), t('wizard.stepDetails')]
         : [t('wizard.stepProduct'), t('wizard.stepTicketType'), t('wizard.stepTimeline'), t('wizard.stepDetails')])
     : (isAdmin
-        ? [t('wizard.stepCustomer'), t('wizard.stepFollowers'), t('wizard.stepProduct'), t('wizard.stepTicketType'), t('wizard.stepCategory'), t('wizard.stepQuestions'), t('wizard.stepChat'), t('wizard.stepDetails')]
-        : [t('wizard.stepProduct'), t('wizard.stepTicketType'), t('wizard.stepCategory'), t('wizard.stepQuestions'), t('wizard.stepChat'), t('wizard.stepDetails')]);
+        ? [t('wizard.stepCustomer'), t('wizard.stepFollowers'), t('wizard.stepProduct'), t('wizard.stepTicketType'), t('wizard.stepDetails')]
+        : [t('wizard.stepProduct'), t('wizard.stepTicketType'), t('wizard.stepDetails')]);
 
   const getStepProgress = () => {
     const idx = stepPath.indexOf(currentStep);
