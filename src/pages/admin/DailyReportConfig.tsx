@@ -8,7 +8,11 @@ export const DailyReportConfig: React.FC = () => {
   const [sendingTest, setSendingTest] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  const [recipients, setRecipients] = useState('');
+  // The daily report sends two separate emails - every pending ticket to
+  // "allRecipients", and only Support-team-assigned pending tickets to
+  // "supportRecipients" - each with its own recipient list.
+  const [allRecipients, setAllRecipients] = useState('');
+  const [supportRecipients, setSupportRecipients] = useState('');
   // Displayed and edited in Amman time (UTC+3); converted to UTC before saving.
   const [hourAmman, setHourAmman] = useState(8);
   const [minute, setMinute] = useState(0);
@@ -18,10 +22,12 @@ export const DailyReportConfig: React.FC = () => {
       setLoading(true);
       const { data } = await supabase
         .from('system_settings')
-        .select('setting_value')
-        .eq('setting_key', 'daily_report_recipients')
-        .maybeSingle();
-      if (data?.setting_value) setRecipients(data.setting_value);
+        .select('setting_key, setting_value')
+        .in('setting_key', ['daily_report_all_recipients', 'daily_report_support_recipients']);
+      (data || []).forEach((row: any) => {
+        if (row.setting_key === 'daily_report_all_recipients') setAllRecipients(row.setting_value || '');
+        if (row.setting_key === 'daily_report_support_recipients') setSupportRecipients(row.setting_value || '');
+      });
       setLoading(false);
     };
     fetchSettings();
@@ -31,18 +37,20 @@ export const DailyReportConfig: React.FC = () => {
     setSaving(true);
     setMessage(null);
     try {
-      const cleaned = recipients
-        .split(',')
-        .map(e => e.trim())
-        .filter(Boolean)
-        .join(', ');
+      const cleanList = (value: string) => value.split(',').map(e => e.trim()).filter(Boolean).join(', ');
+      const cleanedAll = cleanList(allRecipients);
+      const cleanedSupport = cleanList(supportRecipients);
 
       const { error } = await supabase
         .from('system_settings')
-        .upsert({ setting_key: 'daily_report_recipients', setting_value: cleaned, updated_at: new Date().toISOString() }, { onConflict: 'setting_key' });
+        .upsert([
+          { setting_key: 'daily_report_all_recipients', setting_value: cleanedAll, updated_at: new Date().toISOString() },
+          { setting_key: 'daily_report_support_recipients', setting_value: cleanedSupport, updated_at: new Date().toISOString() },
+        ], { onConflict: 'setting_key' });
       if (error) throw error;
 
-      setRecipients(cleaned);
+      setAllRecipients(cleanedAll);
+      setSupportRecipients(cleanedSupport);
       setMessage({ text: 'Recipients saved successfully', type: 'success' });
       setTimeout(() => setMessage(null), 3000);
     } catch (err) {
@@ -124,17 +132,30 @@ export const DailyReportConfig: React.FC = () => {
         </div>
       )}
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
-        <label className="text-sm font-semibold text-slate-700 mb-1.5 block">Recipients</label>
-        <p className="text-xs text-slate-500 mb-2">Comma-separated email addresses.</p>
-        <textarea
-          value={recipients}
-          onChange={(e) => setRecipients(e.target.value)}
-          rows={3}
-          placeholder="admin@pio-tech.com, manager@pio-tech.com"
-          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-[#f97316] focus:border-[#f97316]"
-        />
-        <div className="flex justify-end mt-3">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6 space-y-5">
+        <div>
+          <label className="text-sm font-semibold text-slate-700 mb-1.5 block">All Tickets Report — Recipients</label>
+          <p className="text-xs text-slate-500 mb-2">Gets every pending ticket regardless of assignee. Comma-separated email addresses.</p>
+          <textarea
+            value={allRecipients}
+            onChange={(e) => setAllRecipients(e.target.value)}
+            rows={2}
+            placeholder="leen.aloraidi@pio-tech.com"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-[#f97316] focus:border-[#f97316]"
+          />
+        </div>
+        <div>
+          <label className="text-sm font-semibold text-slate-700 mb-1.5 block">Support Team Report — Recipients</label>
+          <p className="text-xs text-slate-500 mb-2">Gets only pending tickets assigned to a Support team member. Comma-separated email addresses.</p>
+          <textarea
+            value={supportRecipients}
+            onChange={(e) => setSupportRecipients(e.target.value)}
+            rows={2}
+            placeholder="support@pio-tech.com"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-[#f97316] focus:border-[#f97316]"
+          />
+        </div>
+        <div className="flex justify-end">
           <button
             onClick={handleSaveRecipients}
             disabled={saving}
