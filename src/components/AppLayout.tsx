@@ -52,6 +52,7 @@ const getBreadcrumbTitle = (pathname: string, t: any) => {
     'users': 'users',
     'admin/overview': 'overview',
     'admin/data-assistant': 'askYourData',
+    'portal/data-assistant': 'askYourData',
     'admin/reports': 'reportBuilder',
     'admin/aging-report': 'agingReport',
     'diagnostic-builder': 'diagnosticBuilder',
@@ -200,6 +201,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const navigationItems = [
     { name: 'dashboard', path: '/dashboard', icon: LayoutDashboard, roles: ['client', 'cab_user', 'agent', 'BANK_USER', 'SUPPORT_OFFICER', 'SUPPORT_ENGINEER', 'TEAM_LEAD'] },
     { name: 'supportTickets', path: '/tickets', icon: TicketCheck, roles: ['client', 'cab_user', 'agent', 'BANK_USER', 'SUPPORT_OFFICER', 'SUPPORT_ENGINEER', 'TEAM_LEAD'] },
+    { name: 'askYourData', path: '/portal/data-assistant', icon: Database, roles: ['client', 'cab_user', 'BANK_USER'] },
     { name: 'myEscalations', path: '/tickets', icon: TicketCheck, roles: ['TEAM_MEMBER'] },
     { name: 'users', path: '/users', icon: Users, roles: ['SUPPORT_OFFICER'] },
   ];

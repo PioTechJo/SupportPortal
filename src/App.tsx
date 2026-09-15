@@ -26,6 +26,7 @@ import { EmailTemplates } from './pages/admin/EmailTemplates';
 import { DailyReportConfig } from './pages/admin/DailyReportConfig';
 import { AutoCommentConfig } from './pages/admin/AutoCommentConfig';
 import { DataAssistant } from './pages/admin/DataAssistant';
+import { BankDataAssistant } from './pages/BankDataAssistant';
 
 // Create a React Query client
 const queryClient = new QueryClient({
@@ -148,13 +149,21 @@ export default function App() {
                   </ProtectedRoute>
                 } 
               />
-              <Route 
-                path="/portal/dashboard" 
+              <Route
+                path="/portal/dashboard"
                 element={
                   <ProtectedRoute allowedRoles={['client', 'cab_user', 'BANK_USER']}>
                     <Dashboard />
                   </ProtectedRoute>
-                } 
+                }
+              />
+              <Route
+                path="/portal/data-assistant"
+                element={
+                  <ProtectedRoute allowedRoles={['client', 'cab_user', 'BANK_USER']}>
+                    <BankDataAssistant />
+                  </ProtectedRoute>
+                }
               />
               <Route 
                 path="/tickets" 

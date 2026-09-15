@@ -576,5 +576,15 @@
     "colTicketNo": "Ticket No.",
     "colCustomer": "Customer",
     "colSubject": "Subject"
+  },
+  "askYourData": {
+    "title": "Ask Your Data",
+    "subtitle": "Ask natural language questions about your bank's tickets - only your own data is ever visible.",
+    "emptyTitle": "How can I help you check your tickets?",
+    "emptyExample": "Try asking \"How many open tickets do we have?\" or \"What's our oldest unresolved ticket?\"",
+    "analyzing": "Analyzing your data...",
+    "inputPlaceholder": "Ask anything about your tickets...",
+    "disclaimer": "Data Assistant is an AI tool and may occasionally misinterpret your question. Always verify critical details in the Tickets list.",
+    "unexpectedError": "An unexpected error occurred while communicating with the server."
   }
 }
