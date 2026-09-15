@@ -80,6 +80,7 @@ export const TicketDetail: React.FC = () => {
   const [showAssignDropdown, setShowAssignDropdown] = useState(false);
   const [engineers, setEngineers] = useState<any[]>([]);
   const [loadingEngineers, setLoadingEngineers] = useState(false);
+  const [engineerSearch, setEngineerSearch] = useState("");
   const [assigning, setAssigning] = useState(false);
 
   const [showResolveModal, setShowResolveModal] = useState(false);
@@ -1047,6 +1048,7 @@ export const TicketDetail: React.FC = () => {
 
   const handleAssignClick = async () => {
     setShowAssignDropdown(!showAssignDropdown);
+    setEngineerSearch("");
     if (!showAssignDropdown && engineers.length === 0) {
       setLoadingEngineers(true);
       try {
@@ -1086,7 +1088,7 @@ export const TicketDetail: React.FC = () => {
         const engineersWithCounts = (usersData || []).map((eng: any) => ({
           ...eng,
           openTicketsCount: ticketsByEngineer[eng.id] || 0,
-        })).sort((a: any, b: any) => a.openTicketsCount - b.openTicketsCount);
+        })).sort((a: any, b: any) => (a.full_name || "").localeCompare(b.full_name || ""));
 
         setEngineers(engineersWithCounts);
       } catch (err) {
@@ -1779,20 +1781,34 @@ export const TicketDetail: React.FC = () => {
                     : t("ticketDetail.assign")}
                 </button>
 
-                {showAssignDropdown && (
+                {showAssignDropdown && (() => {
+                  const filteredEngineers = engineers.filter((eng: any) => {
+                    const q = engineerSearch.trim().toLowerCase();
+                    if (!q) return true;
+                    return (eng.full_name || "").toLowerCase().includes(q) || (eng.email || "").toLowerCase().includes(q);
+                  });
+                  return (
                   <div className="absolute end-0 mt-2 w-64 max-w-[calc(100vw-2rem)] bg-white rounded-[10px] shadow-lg border border-slate-200 overflow-hidden z-20">
-                    <div className="p-3 border-b border-slate-100">
+                    <div className="p-3 border-b border-slate-100 space-y-2">
                       <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                         {t("ticketDetail.selectSupportEngineer")}
                       </h3>
+                      <input
+                        type="text"
+                        autoFocus
+                        value={engineerSearch}
+                        onChange={(e) => setEngineerSearch(e.target.value)}
+                        placeholder={t("ticketDetail.searchEngineers")}
+                        className="w-full px-2.5 py-1.5 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
+                      />
                     </div>
                     <div className="max-h-60 overflow-y-auto p-2">
                       {loadingEngineers ? (
                         <div className="flex justify-center p-4">
                           <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#3B82F6]" />
                         </div>
-                      ) : engineers.length > 0 ? (
-                        engineers.map((eng: any) => (
+                      ) : filteredEngineers.length > 0 ? (
+                        filteredEngineers.map((eng: any) => (
                           <button
                             key={eng.id}
                             onClick={() => handleAssignTicket(eng.id)}
@@ -1816,7 +1832,8 @@ export const TicketDetail: React.FC = () => {
                       )}
                     </div>
                   </div>
-                )}
+                  );
+                })()}
               </div>
             </>
           )}
