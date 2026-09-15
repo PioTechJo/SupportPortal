@@ -20,14 +20,21 @@ export const DailyReportConfig: React.FC = () => {
   useEffect(() => {
     const fetchSettings = async () => {
       setLoading(true);
-      const { data } = await supabase
-        .from('system_settings')
-        .select('setting_key, setting_value')
-        .in('setting_key', ['daily_report_all_recipients', 'daily_report_support_recipients']);
+      const [{ data }, { data: scheduleData }] = await Promise.all([
+        supabase
+          .from('system_settings')
+          .select('setting_key, setting_value')
+          .in('setting_key', ['daily_report_all_recipients', 'daily_report_support_recipients']),
+        supabase.rpc('get_daily_report_schedule'),
+      ]);
       (data || []).forEach((row: any) => {
         if (row.setting_key === 'daily_report_all_recipients') setAllRecipients(row.setting_value || '');
         if (row.setting_key === 'daily_report_support_recipients') setSupportRecipients(row.setting_value || '');
       });
+      if (scheduleData) {
+        setHourAmman((scheduleData.hour_utc + 3) % 24);
+        setMinute(scheduleData.minute);
+      }
       setLoading(false);
     };
     fetchSettings();
