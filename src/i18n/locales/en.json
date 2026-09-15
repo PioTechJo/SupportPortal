@@ -580,6 +580,8 @@
   "askYourData": {
     "title": "Ask Your Data",
     "subtitle": "Ask natural language questions about your bank's tickets - only your own data is ever visible.",
+    "exampleOpenCount": "Number of open tickets",
+    "exampleOldestOpen": "Date of the oldest open ticket",
     "emptyTitle": "How can I help you check your tickets?",
     "emptyExample": "Try asking \"How many open tickets do we have?\" or \"What's our oldest unresolved ticket?\"",
     "analyzing": "Analyzing your data...",

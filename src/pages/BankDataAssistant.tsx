@@ -65,6 +65,18 @@ export const BankDataAssistant: React.FC = () => {
         <p className="text-slate-500 mt-1">
           {t('askYourData.subtitle')}
         </p>
+        <div className="flex flex-wrap gap-2 mt-3">
+          {[t('askYourData.exampleOpenCount'), t('askYourData.exampleOldestOpen')].map((example) => (
+            <button
+              key={example}
+              type="button"
+              onClick={() => setInput(example)}
+              className="px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 rounded-full transition-colors"
+            >
+              {example}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="flex-1 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden min-h-0">
