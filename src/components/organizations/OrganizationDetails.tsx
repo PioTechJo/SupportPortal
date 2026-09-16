@@ -46,6 +46,15 @@ export const OrganizationDetails: React.FC<OrganizationDetailsProps> = ({
   // Filter users for this organization to pass down to tabs
   const orgUsers = users.filter(u => (u.customer_id || u.tenant_id) === organization.id);
 
+  const lastLoginDisplay = (() => {
+    const timestamps = orgUsers
+      .map(u => (u as any).last_login)
+      .filter(Boolean)
+      .map((t: string) => new Date(t).getTime());
+    if (timestamps.length === 0) return 'N/A';
+    return new Date(Math.max(...timestamps)).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  })();
+
   return (
     <div className="flex flex-col h-full bg-slate-50 min-h-screen">
       {/* Top Navigation */}
@@ -168,7 +177,7 @@ export const OrganizationDetails: React.FC<OrganizationDetailsProps> = ({
             { label: 'Closed Tickets', value: 0, icon: Ticket, color: 'text-emerald-600', bg: 'bg-emerald-50' },
             { label: 'Pending', value: 0, icon: Clock, color: 'text-purple-600', bg: 'bg-purple-50' },
             { label: 'Articles', value: 0, icon: BookOpen, color: 'text-teal-600', bg: 'bg-teal-50' },
-            { label: 'Last Login', value: 'N/A', icon: Clock, color: 'text-slate-600', bg: 'bg-slate-50' },
+            { label: 'Last Login', value: lastLoginDisplay, icon: Clock, color: 'text-slate-600', bg: 'bg-slate-50' },
           ].map((stat, i) => (
             <div key={i} className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col items-start gap-3">
               <div className={`p-2 rounded-lg ${stat.bg} ${stat.color}`}>
