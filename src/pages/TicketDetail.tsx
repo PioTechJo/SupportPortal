@@ -1191,6 +1191,40 @@ export const TicketDetail: React.FC = () => {
         }
       }
 
+      // Send the bank its original "ticket created" style email now, at
+      // assignment time (per the latest request), with an added note that
+      // it's been assigned and is being worked on.
+      try {
+        const formatEmailDate = (d: Date) =>
+          d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        const priorityName = ticket.priority?.priority_name || (ticket.ticket_type === 'DEVELOPMENT' ? 'N/A' : 'Low');
+        const customerEmailVars = {
+          ticket_no: ticketNo,
+          subject: ticket.subject,
+          description: ticket.description || '',
+          start_date: ticket.created_at ? formatEmailDate(new Date(ticket.created_at)) : '',
+          end_date: ticket.sla_due_date ? formatEmailDate(new Date(ticket.sla_due_date)) : '',
+          priority: priorityName,
+        };
+        const { subject, body, recipientEmails } = await getEmailDispatch(
+          'NEW_TICKET_CUSTOMER',
+          customerEmailVars,
+          { createdById: ticket.created_by, followerIds },
+          {
+            subject: `Your ticket ${ticketNo} has been created`,
+            body: `Dears,\n\nWe received your request ticket number ${ticketNo}.\n\nIt is forwarded to the department in charge who will contact you soon to handle your request.\nPlease refer to the above ticket number for any future communication in relation to this issue.\n\nTickets Details:\n\nThe Ticket title is ${ticket.subject} , And problem description is ${customerEmailVars.description} .\n\n- Priority : ${priorityName}\n- Expected Start Date : ${customerEmailVars.start_date}\n- Expected End Date : ${customerEmailVars.end_date}\n\nYour ticket has been assigned to our support team and is now being worked on.\n\nBest regards,\n\nPio-Tech Support Team`,
+            defaultRoles: ['customer'],
+          }
+        );
+        recipientEmails.forEach(email => {
+          supabase.functions.invoke('send-email', {
+            body: { to: email, subject, body, ticket_id: ticket.id }
+          }).catch(err => console.error("Error sending email to customer:", err));
+        });
+      } catch (emailErr) {
+        console.error("Unexpected error invoking send-email for customer:", emailErr);
+      }
+
       setTicket({
         ...ticket,
         assigned_to: engineerId,
