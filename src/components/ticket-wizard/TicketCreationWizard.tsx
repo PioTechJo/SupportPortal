@@ -371,32 +371,10 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
             });
         }
 
-        // Send email to the customer
-        if (user?.email) {
-          const formatEmailDate = (d: Date) =>
-            d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-          const customerEmailVars = {
-            ticket_no: ticketNo,
-            subject: title,
-            description,
-            start_date: formatEmailDate(createdAt),
-            end_date: formatEmailDate(slaDueDate),
-            priority: isDevelopmentTicket ? 'N/A' : priorityName
-          };
-          const customerEmailFallback = {
-            subject: `Your ticket ${ticketNo} has been created`,
-            body: `Dears,\n\nWe received your request ticket number ${ticketNo}.\n\nIt is forwarded to the department in charge who will contact you soon to handle your request.\nPlease refer to the above ticket number for any future communication in relation to this issue.\n\nTickets Details:\n\nThe Ticket title is ${title} , And problem description is ${description} .\n\n- Priority : ${customerEmailVars.priority}\n- Expected Start Date : ${customerEmailVars.start_date}\n- Expected End Date : ${customerEmailVars.end_date}\n\nBest regards,\n\nPio-Tech Support Team`,
-            defaultRoles: ['customer']
-          };
-          getEmailDispatch('NEW_TICKET_CUSTOMER', customerEmailVars, { createdById: user?.id, followerIds: selectedFollowerIds }, customerEmailFallback)
-            .then(({ subject, body, recipientEmails }) => {
-              recipientEmails.forEach(email => {
-                supabase.functions.invoke('send-email', {
-                  body: { to: email, subject, body, ticket_id: ticket.id }
-                }).catch(err => console.error("Error sending email to customer:", err));
-              });
-            });
-        }
+        // Per the latest business request, the bank's first email now
+        // arrives at assignment time (TICKET_ASSIGNED_ENGINEER already
+        // includes "customer" as a recipient), not immediately on ticket
+        // creation. NEW_TICKET_CUSTOMER is intentionally not sent here.
       } catch (notifErr) {
         console.error("Could not post system alerts / send emails", notifErr);
       }
