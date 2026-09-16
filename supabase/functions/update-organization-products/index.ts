@@ -47,7 +47,34 @@ Deno.serve(async (req) => {
       throw new Error('Missing required fields: organization_id, product_ids')
     }
 
-    // 1. Delete existing product assignments for the organization
+    // 1. Validate the incoming product codes BEFORE touching any existing
+    // data, so a bad payload can never wipe a bank's products without
+    // successfully replacing them. (The frontend actually sends product_code
+    // strings like "SAP-BO", not product UUIDs, despite the "product_ids"
+    // param name.)
+    let payload: { organization_id: string; product_code: string; is_active: boolean }[] = []
+    if (product_ids.length > 0) {
+      const { data: productsData, error: productsError } = await supabaseAdmin
+        .from('products')
+        .select('id, product_code')
+        .in('product_code', product_ids)
+
+      if (productsError) {
+        throw new Error(`Failed to lookup product codes: ${JSON.stringify(productsError)}`)
+      }
+
+      if (!productsData || productsData.length === 0) {
+        throw new Error(`No products found matching the provided product codes.`)
+      }
+
+      payload = productsData.map((p: any) => ({
+        organization_id,
+        product_code: p.product_code,
+        is_active: true
+      }))
+    }
+
+    // 2. Delete existing product assignments for the organization
     console.log("Executing DELETE for organization_id:", organization_id)
     const { error: deleteError } = await supabaseAdmin
       .from('organization_products')
@@ -60,39 +87,8 @@ Deno.serve(async (req) => {
       throw new Error(`Delete Existing Products Error: ${JSON.stringify(deleteError)}`)
     }
 
-    // Immediately query after DELETE
-    const { data: afterDeleteData, error: afterDeleteError } = await supabaseAdmin
-      .from('organization_products')
-      .select('*')
-      .eq('organization_id', organization_id)
-
-    console.log("Rows remaining after DELETE:", JSON.stringify(afterDeleteData))
-    if (afterDeleteError) {
-      console.error("After-delete select error:", afterDeleteError)
-    }
-
-    // 2. Insert new product assignments
-    if (product_ids.length > 0) {
-      // Look up product_code for each UUID
-      const { data: productsData, error: productsError } = await supabaseAdmin
-        .from('products')
-        .select('id, product_code')
-        .in('id', product_ids)
-
-      if (productsError) {
-        throw new Error(`Failed to lookup product codes: ${JSON.stringify(productsError)}`)
-      }
-
-      if (!productsData || productsData.length === 0) {
-        throw new Error(`No products found matching the provided UUIDs.`)
-      }
-
-      const payload = productsData.map((p: any) => ({
-        organization_id,
-        product_code: p.product_code, // Insert the actual text code (e.g. 'DWH') for zero-regression
-        is_active: true
-      }))
-      
+    // 3. Insert the validated new product assignments
+    if (payload.length > 0) {
       console.log("INSERT payload:", JSON.stringify(payload))
 
       const { data: insertData, error: insertError } = await supabaseAdmin
