@@ -273,6 +273,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(finalProfile);
             sessionStorage.setItem('pio_tech_session_user', JSON.stringify(finalProfile));
             setLoading(false);
+            Promise.resolve(supabase.rpc('update_last_login')).catch(err => console.error('Failed to update last_login:', err));
             return finalProfile;
           } else {
             throw new Error(`Authentication mismatch: User profile not found for auth.user.id ${data.user.id}. Make sure the user exists in the public.users table.`);
