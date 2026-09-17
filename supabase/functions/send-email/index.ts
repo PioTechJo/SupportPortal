@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { sendEmail } from "../_shared/graph-mail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,13 +20,8 @@ serve(async (req) => {
       throw new Error("Missing required parameters: to, subject, body");
     }
 
-    const POWER_AUTOMATE_WEBHOOK_URL = Deno.env.get("POWER_AUTOMATE_EMAIL_WEBHOOK_URL");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-    if (!POWER_AUTOMATE_WEBHOOK_URL) {
-      throw new Error("POWER_AUTOMATE_EMAIL_WEBHOOK_URL is not configured");
-    }
 
     const htmlBody = `
       <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
@@ -46,16 +42,7 @@ serve(async (req) => {
     let errorMessage = null;
 
     try {
-      const res = await fetch(POWER_AUTOMATE_WEBHOOK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to, subject, htmlBody }),
-      });
-
-      if (!res.ok) {
-        emailStatus = 'failed';
-        errorMessage = `Power Automate webhook returned ${res.status}: ${await res.text()}`;
-      }
+      await sendEmail({ to, subject, html: htmlBody });
     } catch (err: any) {
       emailStatus = 'failed';
       errorMessage = err.message;

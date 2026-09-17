@@ -1,4 +1,5 @@
-export type UserRole = 'BANK_USER' | 'SUPPORT_OFFICER' | 'SUPPORT_MANAGER' | 'CEO';
+export type UserRole = 'BANK_USER' | 'SUPPORT_OFFICER' | 'SUPPORT_MANAGER' | 'CEO'
+  | 'cab_user' | 'administrator' | 'agent' | 'client' | 'admin';
 
 export interface Profile {
   id: string;
@@ -76,8 +77,10 @@ export interface Ticket {
   customer_name?: string;
   tenant_name?: string;
   status_code?: string;
+  status_id?: string;
   customer_id?: string;
   product_id?: string;
+  product_name?: string;
   ticket_statuses?: any;
   ticket_no?: string;
   is_express?: boolean;

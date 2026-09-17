@@ -8,7 +8,7 @@ interface Category {
   product_id: string;
   products?: {
     product_name: string;
-  };
+  }[];
 }
 
 interface CategorySelectorProps {
@@ -25,7 +25,7 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({ selectedCate
     const fetchCategories = async () => {
       const { data, error } = await supabase
         .from('ai_diagnostic_categories')
-        .select('id, category_name, product_id')
+        .select('id, category_name, product_id, products(product_name)')
         .order('category_name');
         
       if (error) console.error('Categories error:', error);
@@ -34,8 +34,8 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({ selectedCate
       if (!error && data) {
         // Sort manually by product name then category name to group them nicely
         const sorted = data.sort((a, b) => {
-          const pA = a.products?.product_name || '';
-          const pB = b.products?.product_name || '';
+          const pA = a.products?.[0]?.product_name || '';
+          const pB = b.products?.[0]?.product_name || '';
           if (pA !== pB) return pA.localeCompare(pB);
           return a.category_name.localeCompare(b.category_name);
         });

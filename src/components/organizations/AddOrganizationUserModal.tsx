@@ -131,7 +131,7 @@ export const AddOrganizationUserModal: React.FC<AddOrganizationUserModalProps> =
 
       if (formData.role === 'TEAM_MEMBER' && formData.team_id) {
         const { error: teamErr } = await supabase.from('team_members').insert({
-          user_id: result.profile?.id || result.id,
+          user_id: result.profile?.id,
           team_id: formData.team_id
         });
         if (teamErr) {

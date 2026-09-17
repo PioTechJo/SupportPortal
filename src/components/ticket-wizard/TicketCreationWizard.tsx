@@ -48,7 +48,15 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
 
   const [attachments, setAttachments] = useState<File[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
-  const ALLOWED_ATTACHMENT_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'application/zip'];
+  const ALLOWED_ATTACHMENT_TYPES = [
+    'application/pdf',
+    'image/png',
+    'image/jpeg',
+    'application/zip',
+    'application/x-zip-compressed',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ];
   const MAX_ATTACHMENT_SIZE = 5 * 1024 * 1024; // 5MB — same limit as the ticket detail page
 
   const handleAddAttachments = (files: File[]) => {
@@ -57,7 +65,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
 
     for (const file of files) {
       if (!ALLOWED_ATTACHMENT_TYPES.includes(file.type)) {
-        rejectedReason = 'Only PDF, PNG, JPG, and ZIP files are allowed.';
+        rejectedReason = 'Only PDF, PNG, JPG, ZIP, and Excel files are allowed.';
         continue;
       }
       if (file.size > MAX_ATTACHMENT_SIZE) {
@@ -261,6 +269,19 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
         .single();
 
       if (ticketError) throw ticketError;
+
+      try {
+        await supabase.from('audit_log').insert({
+          table_name: 'tickets',
+          record_id: ticket.id,
+          action_type: 'CREATED',
+          old_value: null,
+          new_value: { subject: title, status_id: newStatusId },
+          changed_by: user?.id,
+        });
+      } catch (auditErr) {
+        console.error('Error writing ticket creation to audit_log:', auditErr);
+      }
 
       // 1.35. A database trigger (enrich_ticket_no_with_project_code) appends the latest
       // matching maintenance contract's project_code to ticket_no right after insert.

@@ -16,6 +16,9 @@ export const DailyReportConfig: React.FC = () => {
   // Displayed and edited in Amman time (UTC+3); converted to UTC before saving.
   const [hourAmman, setHourAmman] = useState(8);
   const [minute, setMinute] = useState(0);
+  // Cron day-of-week numbers: 0=Sun..6=Sat. All selected by default.
+  const [days, setDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
+  const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -34,6 +37,11 @@ export const DailyReportConfig: React.FC = () => {
       if (scheduleData) {
         setHourAmman((scheduleData.hour_utc + 3) % 24);
         setMinute(scheduleData.minute);
+        if (scheduleData.days && scheduleData.days !== '*') {
+          setDays(scheduleData.days.split(',').map((d: string) => parseInt(d, 10)).filter((d: number) => !isNaN(d)));
+        } else {
+          setDays([0, 1, 2, 3, 4, 5, 6]);
+        }
       }
       setLoading(false);
     };
@@ -68,14 +76,24 @@ export const DailyReportConfig: React.FC = () => {
     }
   };
 
+  const toggleDay = (day: number) => {
+    setDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort());
+  };
+
   const handleSaveSchedule = async () => {
+    if (days.length === 0) {
+      setMessage({ text: 'Select at least one day', type: 'error' });
+      return;
+    }
     setSaving(true);
     setMessage(null);
     try {
       const hourUtc = (hourAmman - 3 + 24) % 24;
+      const pDays = days.length === 7 ? '*' : days.join(',');
       const { error } = await supabase.rpc('set_daily_report_schedule', {
         p_hour_utc: hourUtc,
         p_minute_utc: minute,
+        p_days: pDays,
       });
       if (error) throw error;
 
@@ -197,6 +215,27 @@ export const DailyReportConfig: React.FC = () => {
             ))}
           </select>
         </div>
+
+        <label className="text-sm font-semibold text-slate-700 mb-1.5 block">Send on These Days</label>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {DAY_LABELS.map((label, day) => (
+            <label
+              key={day}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm cursor-pointer transition-colors ${
+                days.includes(day) ? 'bg-orange-50 border-[#f97316] text-slate-800' : 'bg-white border-slate-300 text-slate-500'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={days.includes(day)}
+                onChange={() => toggleDay(day)}
+                className="rounded border-slate-300 text-[#f97316] focus:ring-[#f97316]"
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+
         <div className="flex justify-end">
           <button
             onClick={handleSaveSchedule}

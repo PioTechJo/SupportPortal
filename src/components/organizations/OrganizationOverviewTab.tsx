@@ -61,7 +61,7 @@ export const OrganizationOverviewTab: React.FC<OrganizationOverviewTabProps> = (
             .eq('is_active', true),
           supabase
             .from('maintenance_contracts')
-            .select('*')
+            .select('*, products(product_code)')
             .eq('customer_id', organization.id)
         ]);
 
@@ -75,7 +75,7 @@ export const OrganizationOverviewTab: React.FC<OrganizationOverviewTabProps> = (
 
         products.forEach(p => {
           // Find latest contract for this product
-          const productContracts = contracts.filter(c => c.product_id === p.product_id);
+          const productContracts = contracts.filter(c => c.products?.product_code === p.product_code);
           if (productContracts.length === 0) {
             missingOrExpiredC++;
           } else {

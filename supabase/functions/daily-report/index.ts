@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
+import { sendEmail } from "../_shared/graph-mail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -56,13 +57,9 @@ serve(async (req) => {
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const POWER_AUTOMATE_WEBHOOK_URL = Deno.env.get("POWER_AUTOMATE_EMAIL_WEBHOOK_URL");
 
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error("Supabase environment configuration is missing.");
-    }
-    if (!POWER_AUTOMATE_WEBHOOK_URL) {
-      throw new Error("POWER_AUTOMATE_EMAIL_WEBHOOK_URL is not configured");
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -137,24 +134,16 @@ serve(async (req) => {
         let status = 'sent';
         let errorMessage = null;
         try {
-          const res = await fetch(POWER_AUTOMATE_WEBHOOK_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              to,
-              subject,
-              htmlBody,
-              attachments: [{
-                name: attachmentName,
-                contentBytes: attachmentBase64,
-                contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-              }],
-            }),
+          await sendEmail({
+            to,
+            subject,
+            html: htmlBody,
+            attachments: [{
+              name: attachmentName,
+              contentBytes: attachmentBase64,
+              contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            }],
           });
-          if (!res.ok) {
-            status = 'failed';
-            errorMessage = `Power Automate webhook returned ${res.status}: ${await res.text()}`;
-          }
         } catch (err: any) {
           status = 'failed';
           errorMessage = err.message;

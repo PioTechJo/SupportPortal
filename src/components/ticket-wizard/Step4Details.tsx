@@ -86,7 +86,7 @@ export const Step4Details: React.FC<Step4DetailsProps> = ({
               ref={fileInputRef}
               type="file"
               multiple
-              accept=".pdf,.png,.jpg,.jpeg,.zip,application/pdf,image/png,image/jpeg,application/zip"
+              accept=".pdf,.png,.jpg,.jpeg,.zip,.xls,.xlsx,application/pdf,image/png,image/jpeg,application/zip,application/x-zip-compressed,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={handleFilesSelected}
               className="hidden"
             />
@@ -96,7 +96,7 @@ export const Step4Details: React.FC<Step4DetailsProps> = ({
               className="flex items-center gap-2 px-3 py-2 border border-dashed border-slate-300 rounded-[8px] text-[13px] font-medium text-slate-600 hover:bg-slate-50 hover:border-slate-400 transition-colors w-full justify-center"
             >
               <Paperclip size={15} />
-              {t("wizard.addAttachment", { defaultValue: "Attach files (PDF, PNG, JPG, ZIP — max 5MB each)" })}
+              {t("wizard.addAttachment", { defaultValue: "Attach files (PDF, PNG, JPG, ZIP, Excel — max 5MB each)" })}
             </button>
 
             {attachmentError && (

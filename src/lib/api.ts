@@ -250,6 +250,7 @@ Recommended Actions:
 2. Ensure you have imported the intermediary CA certs from Riyadh Bank.
 3. Check if your firewalls are blocking outbound traffic of the gateway IP range.`,
     product_id: 'prod-2',
+    product_code: 'prod-2',
     category: 'Network & Security',
     tags: ['ssl', 'handshake', 'gateway', 'network'],
     view_count: 42,
@@ -265,6 +266,7 @@ Recommended Actions:
 2. Manually trigger standard ledger query tools via the Support portal.
 3. Check the EOD database trigger queues if processing state is stuck on 'PENDING'.`,
     product_id: 'prod-1',
+    product_code: 'prod-1',
     category: 'Reconciliation',
     tags: ['reconcile', 'sync', 'ledger', 'eod'],
     view_count: 18,
@@ -280,6 +282,7 @@ Recommended Actions:
 2. Access the 'White-list Registry' using administrator credentials.
 3. Submit formal justification notes with wire tracking numbers to dismiss alerts.`,
     product_id: 'prod-3',
+    product_code: 'prod-3',
     category: 'Compliance',
     tags: ['aml', 'screening', 'compliance', 'regs'],
     view_count: 27,
@@ -295,6 +298,7 @@ Recommended Actions:
 2. Force-refresh current collateral ratings via the administrative action command.
 3. Ensure currency cross-conversion codes (e.g. SAR to USD) have active daily coefficients loaded.`,
     product_id: 'prod-4',
+    product_code: 'prod-4',
     category: 'Collateral',
     tags: ['collateral', 'valuation', 'credit', 'currency'],
     view_count: 11,
@@ -821,11 +825,11 @@ export const api = {
           country: row.country,
           logo_url: '🏢',
           primary_color: '#0f766e',
-          support_tier: 'enterprise',
+          support_tier: 'enterprise' as const,
           is_internal: row.is_internal === true,
           created_at: row.created_at
         }));
-        
+
         return { data: mappedData, count: count || 0 };
       },
       () => ({ data: [], count: 0 })
@@ -1349,6 +1353,19 @@ async getTicketsPaginated(page: number = 1, limit: number = 50, customerId?: str
         rawError: error
       });
       throw error;
+    }
+
+    try {
+      await supabase.from('audit_log').insert({
+        table_name: 'tickets',
+        record_id: data.id,
+        action_type: 'CREATED',
+        old_value: null,
+        new_value: { subject: payload.subject, status_id: payload.status_id ?? null },
+        changed_by: payload.created_by,
+      });
+    } catch (auditErr) {
+      console.warn("Could not write ticket creation to audit_log:", auditErr);
     }
 
     try {

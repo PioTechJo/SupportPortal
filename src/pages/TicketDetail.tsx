@@ -907,9 +907,12 @@ export const TicketDetail: React.FC = () => {
       "image/png",
       "image/jpeg",
       "application/zip",
+      "application/x-zip-compressed",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     ];
     if (!allowedTypes.includes(file.type)) {
-      alert("Only PDF, PNG, JPG, and ZIP files are allowed.");
+      alert("Only PDF, PNG, JPG, ZIP, and Excel files are allowed.");
       return;
     }
 
@@ -2023,7 +2026,7 @@ export const TicketDetail: React.FC = () => {
                   type="file"
                   id="file-upload"
                   className="hidden"
-                  accept=".pdf,.png,.jpg,.jpeg,.zip"
+                  accept=".pdf,.png,.jpg,.jpeg,.zip,.xls,.xlsx"
                   onChange={handleUploadAttachment}
                   disabled={uploading}
                 />

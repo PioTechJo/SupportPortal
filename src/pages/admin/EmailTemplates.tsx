@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Mail, Save, GripVertical, AlertCircle, Users } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { Mail, Save, GripVertical, AlertCircle, Users, Send } from 'lucide-react';
 
 interface EmailTemplateRow {
   id: string;
@@ -14,6 +15,7 @@ interface EmailTemplateRow {
 }
 
 export const EmailTemplates: React.FC = () => {
+  const { user } = useAuth();
   const [templates, setTemplates] = useState<EmailTemplateRow[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [subject, setSubject] = useState('');
@@ -21,6 +23,7 @@ export const EmailTemplates: React.FC = () => {
   const [recipientRoles, setRecipientRoles] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [sendingTest, setSendingTest] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   const [supportGroupEmail, setSupportGroupEmail] = useState('');
@@ -145,6 +148,32 @@ export const EmailTemplates: React.FC = () => {
       setMessage({ text: 'Failed to save template', type: 'error' });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSendTest = async () => {
+    if (!selectedTemplate || !user?.email) return;
+    setSendingTest(true);
+    setMessage(null);
+    try {
+      const sampleVars: Record<string, string> = {};
+      selectedTemplate.available_variables.forEach(v => {
+        sampleVars[v.key] = `[${v.label}]`;
+      });
+      const fill = (template: string) =>
+        template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => sampleVars[key] ?? '');
+
+      const { error } = await supabase.functions.invoke('send-email', {
+        body: { to: user.email, subject: fill(subject), body: fill(body) },
+      });
+      if (error) throw error;
+      setMessage({ text: `Test email sent to ${user.email}`, type: 'success' });
+      setTimeout(() => setMessage(null), 3000);
+    } catch (err) {
+      console.error('Error sending test email:', err);
+      setMessage({ text: 'Failed to send test email', type: 'error' });
+    } finally {
+      setSendingTest(false);
     }
   };
 
@@ -371,7 +400,16 @@ export const EmailTemplates: React.FC = () => {
                 />
               </div>
 
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={handleSendTest}
+                  disabled={sendingTest || !user?.email}
+                  title={user?.email ? `Send a test email to ${user.email}` : 'No email on your account'}
+                  className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  {sendingTest ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-slate-500" /> : <Send size={16} />}
+                  Send Test Email
+                </button>
                 <button
                   onClick={handleSave}
                   disabled={saving}
