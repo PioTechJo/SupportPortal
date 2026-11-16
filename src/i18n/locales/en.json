@@ -92,6 +92,7 @@
     "overview": "Overview",
     "askYourData": "Ask Your Data",
     "reportBuilder": "Report Builder",
+    "pioTechReports": "Pio-Tech Reports",
     "agingReport": "Aging Report",
     "diagnosticBuilder": "Diagnostic Builder",
     "recommendationRules": "Recommendation Rules",
@@ -191,6 +192,11 @@
     "stepCategory": "Category",
     "stepQuestions": "Questions",
     "stepChat": "Chat",
+    "stepSelfService": "Quick Checks",
+    "selfServiceTitle": "Before you submit: quick checks for {{product}}",
+    "selfServiceSubtitle": "Select any that apply (one or more) and add notes if you like. This step is optional, you can continue without selecting anything.",
+    "selfServiceContinue": "Continue",
+    "preventiveRecommendation": "Preventive recommendation",
     "stepDetails": "Details",
     "followersTitle": "Who should be notified?",
     "followersSubtitle": "Pick the bank user(s) who will receive notifications and updates for this ticket.",
@@ -263,7 +269,9 @@
     "pleaseProvide": "Please provide details to help us diagnose the issue.",
     "subjectTitle": "Subject / Title *",
     "detailedDescription": "Detailed Description *",
-    "thinking": "Thinking..."
+    "thinking": "Thinking...",
+    "selfServiceNotePlaceholder": "Your answer or notes (optional)",
+    "selfServiceSkip": "Skip"
   },
   "ticketDetail": {
     "back": "Back",

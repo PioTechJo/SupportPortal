@@ -9,6 +9,8 @@ import { Step1Product } from './Step1Product';
 import { StepTicketType, TicketType } from './StepTicketType';
 import { StepTimeline } from './StepTimeline';
 import { Step4Details } from './Step4Details';
+import { StepSelfService, SelfServiceSelections } from './StepSelfService';
+import { getSelfServiceGuide } from './selfServiceGuides';
 import { X, Check, Brain, AlertCircle, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -41,6 +43,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
   // Extra Info for display/submission
   const [title, setTitle] = useState<string>('');
   const [description, setDescription] = useState<string>('');
+  const [selfServiceSelections, setSelfServiceSelections] = useState<SelfServiceSelections>({});
   const [selectedProductName, setSelectedProductName] = useState<string>('');
   const [selectedCategoryName, setSelectedCategoryName] = useState<string>('');
   
@@ -186,6 +189,11 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
       setError('Please provide a title and description.');
       return;
     }
+    const checkedIssues = Object.entries(selfServiceSelections) as [string, string][];
+    const fullDescription = checkedIssues.length
+      ? `${description}\n\nSelf-service checks reported by the user:\n` +
+        checkedIssues.map(([issue, note]) => `- ${issue}${note.trim() ? `: ${note.trim()}` : ''}`).join('\n')
+      : description;
     if (!newStatusId) {
       setError('System error: NEW status lookup failed.');
       return;
@@ -251,7 +259,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
         .from('tickets')
         .insert({
           subject: title,
-          description,
+          description: fullDescription,
           customer_id: selectedCustomerId,
           product_id: selectedProductId,
           category_id: selectedCategoryId || null,
@@ -353,7 +361,9 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
         const customerName = customerData?.customer_name || '';
         const createdByName = (user as any)?.full_name || (user as any)?.name || user?.email || 'Customer';
 
-        if (adminIds.length > 0) {
+        // Always send the admin/support-group email, even if no admin user
+        // exists (the support group mailbox must still be notified).
+        {
           const notificationsPayload = adminIds.map((adminId: string) => ({
             profile_id: adminId,
             content: `New ticket #${ticketNo} created.`,
@@ -363,7 +373,9 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
             created_at: new Date().toISOString()
           }));
 
-          const { error: insertError } = await supabase.from('notifications').insert(notificationsPayload);
+          const { error: insertError } = adminIds.length > 0
+            ? await supabase.from('notifications').insert(notificationsPayload)
+            : { error: null };
           if (insertError) {
             console.error("Supabase notification insert error:", insertError);
           }
@@ -371,7 +383,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
           const adminEmailVars = {
             ticket_no: ticketNo,
             subject: title,
-            description,
+            description: fullDescription,
             created_by_email: user?.email || 'Customer',
             created_by_name: createdByName,
             customer_name: customerName,
@@ -379,7 +391,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
           };
           const adminEmailFallback = {
             subject: `New ticket ${ticketNo} has been created by ${user?.email || 'Customer'} - ${title}`,
-            body: `Dears,\n\nA Portal Ticket has been opened by ${createdByName} , ${customerName} as a ${selectedProductName} .\n\nKindly check the Ticket title ${title} , problem description is ${description}, the ticket ID no. is ${ticketNo} and edit the ticket severity, other details, in order to send a Ticket Submitted Email to the customer ASAP.\n\nBest Regards,`,
+            body: `Dears,\n\nA Portal Ticket has been opened by ${createdByName} , ${customerName} as a ${selectedProductName} .\n\nKindly check the Ticket title ${title} , problem description is ${fullDescription}, the ticket ID no. is ${ticketNo} and edit the ticket severity, other details, in order to send a Ticket Submitted Email to the customer ASAP.\n\nBest Regards,`,
             defaultRoles: ['admin']
           };
           getEmailDispatch('NEW_TICKET_ADMIN', adminEmailVars, { createdById: user?.id, followerIds: selectedFollowerIds }, adminEmailFallback)
@@ -463,6 +475,8 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
     }
   };
 
+  const selfServiceGuide = getSelfServiceGuide(selectedProductName);
+
   const renderStep = () => {
     switch (currentStep) {
       case 0:
@@ -493,6 +507,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
             selectedProductId={selectedProductId}
             onSelect={(id, name) => {
               setSelectedProductId(id);
+              if (id !== selectedProductId) setSelfServiceSelections({});
               setSelectedProductName(name);
               setCurrentStep(2);
             }}
@@ -505,11 +520,26 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
             selectedType={ticketType}
             onSelect={(type) => {
               setTicketType(type);
-              setCurrentStep(type === 'DEVELOPMENT' ? 6 : 7);
+              setCurrentStep(type === 'DEVELOPMENT' ? 6 : (selfServiceGuide ? 3 : 7));
             }}
             onBack={() => setCurrentStep(1)}
           />
         );
+      case 3:
+        return selfServiceGuide ? (
+          <StepSelfService
+            productName={selectedProductName}
+            guide={selfServiceGuide}
+            selections={selfServiceSelections}
+            onChange={setSelfServiceSelections}
+            onNext={() => setCurrentStep(7)}
+            onSkip={() => {
+              setSelfServiceSelections({});
+              setCurrentStep(7);
+            }}
+            onBack={() => setCurrentStep(2)}
+          />
+        ) : null;
       case 6:
         return (
           <StepTimeline
@@ -566,7 +596,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
               onAddAttachments={handleAddAttachments}
               onRemoveAttachment={handleRemoveAttachment}
               attachmentError={attachmentError}
-              onBack={() => setCurrentStep(ticketType === 'DEVELOPMENT' ? 6 : 2)}
+              onBack={() => setCurrentStep(ticketType === 'DEVELOPMENT' ? 6 : (selfServiceGuide ? 3 : 2))}
               onSubmit={handleSubmit}
               isSubmitting={isSubmitting}
               error={error}
@@ -640,15 +670,17 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
   const isDevelopmentPath = ticketType === 'DEVELOPMENT';
   const stepPath = isDevelopmentPath
     ? (isAdmin ? [0, 20, 1, 2, 6, 7] : [1, 2, 6, 7])
-    : (isAdmin ? [0, 20, 1, 2, 7] : [1, 2, 7]);
+    : selfServiceGuide
+      ? (isAdmin ? [0, 20, 1, 2, 3, 7] : [1, 2, 3, 7])
+      : (isAdmin ? [0, 20, 1, 2, 7] : [1, 2, 7]);
 
   const tabs = isDevelopmentPath
     ? (isAdmin
         ? [t('wizard.stepCustomer'), t('wizard.stepFollowers'), t('wizard.stepProduct'), t('wizard.stepTicketType'), t('wizard.stepTimeline'), t('wizard.stepDetails')]
         : [t('wizard.stepProduct'), t('wizard.stepTicketType'), t('wizard.stepTimeline'), t('wizard.stepDetails')])
     : (isAdmin
-        ? [t('wizard.stepCustomer'), t('wizard.stepFollowers'), t('wizard.stepProduct'), t('wizard.stepTicketType'), t('wizard.stepDetails')]
-        : [t('wizard.stepProduct'), t('wizard.stepTicketType'), t('wizard.stepDetails')]);
+        ? [t('wizard.stepCustomer'), t('wizard.stepFollowers'), t('wizard.stepProduct'), t('wizard.stepTicketType'), ...(selfServiceGuide ? [t('wizard.stepSelfService')] : []), t('wizard.stepDetails')]
+        : [t('wizard.stepProduct'), t('wizard.stepTicketType'), ...(selfServiceGuide ? [t('wizard.stepSelfService')] : []), t('wizard.stepDetails')]);
 
   const getStepProgress = () => {
     const idx = stepPath.indexOf(currentStep);
@@ -662,7 +694,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
 
   return (
     <div className="fixed inset-0 bg-[rgba(15,20,35,0.55)] flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-[16px] w-full max-w-[620px] overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="bg-white rounded-[16px] w-full max-w-[680px] overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="bg-[#1a1f2e] p-5 flex justify-between items-center text-white shrink-0">
           <div>
@@ -680,7 +712,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
         </div>
 
         {/* Step tabs */}
-        <div className="bg-slate-50 border-b border-slate-200 px-6 py-3 flex gap-6 overflow-x-auto shrink-0">
+        <div className="bg-slate-50 border-b border-slate-200 px-5 py-2.5 flex gap-4 overflow-x-auto shrink-0">
           {tabs.map((tab, idx) => {
             const isCompleted = idx < activeTabIndex;
             const isActive = idx === activeTabIndex;
@@ -703,7 +735,7 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
           })}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 bg-white relative">
+        <div className="flex-1 overflow-y-auto px-6 py-4 bg-white relative">
           {isCheckingDuplicates && (
             <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] z-10 flex items-center justify-center">
               <Loader2 className="animate-spin text-[#f97316]" size={28} />

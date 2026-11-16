@@ -122,7 +122,7 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
   const [sortColumn, setSortColumn] = useState<SortColumn>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
-  const cellPadding = 'py-2';
+  const cellPadding = 'py-3';
 
   const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
     const saved = localStorage.getItem('ticketsTableColumnWidths');
@@ -133,12 +133,13 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
   }, [colWidths]);
 
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() => {
-    const defaults = COLUMN_DEFS.reduce((acc, c) => { acc[c.key] = true; return acc; }, {} as Record<string, boolean>);
-    const saved = localStorage.getItem('ticketsTableVisibleColumns');
+    const hiddenByDefault = ['ticket_type', 'legacy_assigned_to', 'sla_due_date'];
+    const defaults = COLUMN_DEFS.reduce((acc, c) => { acc[c.key] = !hiddenByDefault.includes(c.key); return acc; }, {} as Record<string, boolean>);
+    const saved = localStorage.getItem('ticketsTableVisibleColumns_v2');
     return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
   });
   useEffect(() => {
-    localStorage.setItem('ticketsTableVisibleColumns', JSON.stringify(visibleColumns));
+    localStorage.setItem('ticketsTableVisibleColumns_v2', JSON.stringify(visibleColumns));
   }, [visibleColumns]);
   const [isColumnsMenuOpen, setIsColumnsMenuOpen] = useState(false);
   const toggleColumn = (key: string) => setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
@@ -490,7 +491,7 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
     }
 
     return (
-      <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold ${colorClass}`}>
+      <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold whitespace-nowrap ${colorClass}`}>
         <Icon size={14} className="shrink-0" />
         <span>{text}</span>
       </div>
@@ -536,7 +537,7 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
         key={id}
         onClick={() => { setViewFilter(id); setProductFilter('all'); setCustomerFilter('all'); setCustomerIdFilter(null); setEngineerFilter('all'); }}
         className={`
-          flex items-center gap-2 px-3.5 py-2 rounded-full text-[13px] font-medium border transition-colors shrink-0 whitespace-nowrap
+          flex items-center gap-2 px-3 py-1.5 rounded-full text-[13px] font-medium border transition-colors shrink-0 whitespace-nowrap
           ${isActive ? activeColorClass + ' shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'}
         `}
       >
@@ -547,66 +548,68 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
     );
   };
 
+  const priorityAccent = (priority?: string | null) => {
+    switch ((priority || '').toLowerCase()) {
+      case 'critical': return 'bg-red-600';
+      case 'urgent': return 'bg-red-500';
+      case 'high': return 'bg-orange-500';
+      case 'medium': return 'bg-amber-400';
+      case 'low': return 'bg-emerald-500';
+      default: return 'bg-slate-300';
+    }
+  };
+
+  const initialsOf = (name?: string | null) => {
+    const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return '?';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  };
+
+  const timeAgo = (date: Date) => {
+    const diffMs = Date.now() - date.getTime();
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days}d ago`;
+    const months = Math.floor(days / 30);
+    if (months < 12) return `${months}mo ago`;
+    return `${Math.floor(months / 12)}y ago`;
+  };
+
+  const renderStatusBadge = (statusCode: string) => {
+    const s = (statusCode || '').toUpperCase();
+    let label = 'Open';
+    let cls = 'bg-slate-100 text-slate-700';
+    let dot = 'bg-slate-400';
+    if (s === 'NEW' || s === 'OPEN') { label = 'New'; cls = 'bg-blue-50 text-blue-700'; dot = 'bg-blue-500'; }
+    else if (s === 'ASSIGNED') { label = 'Assigned'; cls = 'bg-purple-50 text-purple-700'; dot = 'bg-purple-500'; }
+    else if (s === 'INVESTIGATION' || s === 'IN_PROGRESS') { label = 'Support Action'; cls = 'bg-amber-50 text-amber-700'; dot = 'bg-amber-500'; }
+    else if (s === 'DEVELOPMENT_ACTION') { label = 'Development Action'; cls = 'bg-indigo-50 text-indigo-700'; dot = 'bg-indigo-500'; }
+    else if (s === 'PENDING_CUSTOMER') { label = 'Pending Customer'; cls = 'bg-orange-50 text-orange-700'; dot = 'bg-orange-500'; }
+    else if (s === 'RESOLVED_PENDING_APPROVAL') { label = 'Pending Approval'; cls = 'bg-amber-50 text-amber-700'; dot = 'bg-amber-500'; }
+    else if (s === 'APPROVED') { label = 'Approved'; cls = 'bg-emerald-50 text-emerald-700'; dot = 'bg-emerald-500'; }
+    else if (s === 'RESOLVED') { label = 'Resolved'; cls = 'bg-emerald-50 text-emerald-700'; dot = 'bg-emerald-500'; }
+    else if (s === 'CLOSED') { label = 'Closed'; cls = 'bg-slate-100 text-slate-600'; dot = 'bg-slate-400'; }
+    return (
+      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${cls}`}>
+        <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
+        {label}
+      </span>
+    );
+  };
+
   return (
-    <div className="flex flex-col h-full p-3 md:p-6 max-w-[1600px] mx-auto">
+    <div className="flex flex-col h-full px-4 md:px-8 py-6 max-w-[1600px] mx-auto w-full">
 
-      {/* Horizontal Ticket Views Bar */}
-      <div className="flex items-center flex-wrap gap-2 pb-4 mb-4 border-b border-slate-200">
-        {renderViewPill('all', 'All tickets', allTicketsView.count, Inbox, 'text-slate-400', 'bg-[#3B82F6] text-white border-[#3B82F6]')}
-        <div className="w-px h-5 bg-slate-200 mx-1 shrink-0" />
-        {statusViews.map(view => {
-          const meta = statusIconMap[view.id] || { Icon: AlertCircle, color: 'text-slate-400', activeColor: 'bg-slate-100 text-slate-700 border-slate-300' };
-          return renderViewPill(view.id, view.name, view.count, meta.Icon, meta.color, meta.activeColor);
-        })}
-        <div className="w-px h-5 bg-slate-200 mx-1 shrink-0" />
-        {myWorkViews.map(view => {
-          const Icon = view.id === 'assigned' ? User : AlertCircle;
-          const color = view.id === 'high_priority' ? 'text-red-400' : 'text-slate-400';
-          return renderViewPill(view.id, view.name, view.count, Icon, color, 'bg-indigo-50 text-indigo-700 border-indigo-200');
-        })}
-
-        {productViews.length > 0 && (
-          <>
-            <div className="w-px h-5 bg-slate-200 mx-1 shrink-0" />
-            <div className="relative shrink-0">
-              <button
-                onClick={() => setIsProductOpen(prev => !prev)}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-[13px] font-medium border transition-colors whitespace-nowrap
-                  ${productFilter !== 'all' ? 'bg-violet-50 text-violet-700 border-violet-200 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}
-              >
-                <Package size={14} className={productFilter !== 'all' ? '' : 'text-slate-400'} />
-                <span>{productFilter === 'all' ? 'By product' : productFilter}</span>
-                <ChevronDown size={13} className="text-current opacity-60" />
-              </button>
-              {isProductOpen && (
-                <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-lg py-1 z-50">
-                  {productViews.map(prod => {
-                    const isActive = productFilter === prod.name;
-                    return (
-                      <button
-                        key={prod.id}
-                        onClick={() => { setProductFilter(prod.name); setViewFilter('all'); setCustomerFilter('all'); setCustomerIdFilter(null); setEngineerFilter('all'); setIsProductOpen(false); }}
-                        className={`w-full flex items-center justify-between px-4 py-2 text-sm text-left ${isActive ? 'bg-[#eff6ff] text-[#3B82F6]' : 'text-slate-700 hover:bg-slate-50'}`}
-                      >
-                        <span className="truncate">{prod.name}</span>
-                        <span className="text-xs text-slate-400">{prod.count}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Main Area */}
-      <div className="flex-1 flex flex-col min-w-0">
-
-        {/* Header Actions */}
-        <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
-          <div className="flex items-center gap-3 min-w-0">
-            <h1 className="text-2xl font-semibold text-slate-900 truncate">
+      {/* Header */}
+      <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
+        <div className="min-w-0">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-[26px] leading-8 font-semibold tracking-tight text-slate-900">
               {(() => {
                 if (productFilter !== 'all') return productFilter;
                 if (viewFilter === 'all') return 'All tickets';
@@ -618,7 +621,7 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
               })()}
             </h1>
             {customerFilter !== 'all' && (
-              <span className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-full pl-3 pr-1.5 py-1 text-xs font-medium shrink-0">
+              <span className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 rounded-full pl-3 pr-1.5 py-1 text-xs font-medium">
                 Bank: {customerFilter}
                 <button
                   onClick={() => { setCustomerFilter('all'); setCustomerIdFilter(null); }}
@@ -630,7 +633,7 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
               </span>
             )}
             {engineerFilter !== 'all' && (
-              <span className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full pl-3 pr-1.5 py-1 text-xs font-medium shrink-0">
+              <span className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 rounded-full pl-3 pr-1.5 py-1 text-xs font-medium">
                 Engineer: {
                   engineerFilter === 'unassigned'
                     ? 'Unassigned'
@@ -648,406 +651,503 @@ export const Tickets: React.FC<TicketsProps> = ({ isEmbedded, onTicketSelect }) 
               </span>
             )}
           </div>
+          <p className="text-sm text-slate-500 mt-1">
+            {totalCount} {totalCount === 1 ? 'ticket' : 'tickets'}
+          </p>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-2 justify-end">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input
-                type="text"
-                placeholder="Search tickets..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm w-48 lg:w-56 focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
-              />
-            </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={handleExportToExcel}
+            className="flex items-center gap-2 h-10 px-4 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors whitespace-nowrap"
+            title={t('tickets.exportToExcel')}
+          >
+            <Download size={15} className="text-slate-400" />
+            <span>{t('tickets.export')}</span>
+          </button>
+          {!isEmbedded && (
+            <button
+              onClick={handleOpenCreateModal}
+              className="flex items-center gap-2 h-10 px-4 bg-[#3B82F6] hover:bg-[#2563eb] text-white rounded-xl text-sm font-medium transition-colors shadow-sm whitespace-nowrap"
+            >
+              <Plus size={16} />
+              Create ticket
+            </button>
+          )}
+        </div>
+      </div>
 
-            {/* Date Range Filter */}
-            <div className="relative">
-              <button
-                onClick={() => setIsDateRangeOpen(!isDateRangeOpen)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-slate-50 whitespace-nowrap"
-              >
-                <span>
-                  {dateRange === 'all' ? 'All time' : dateRange === '7days' ? 'Last 7 days' : 'Last 30 days'}
-                </span>
-                <ChevronDown size={14} className="text-slate-400 shrink-0" />
-              </button>
+      {/* Status tabs */}
+      <div className="flex items-center gap-1 border-b border-slate-200 mb-5 overflow-x-auto">
+        {[
+          { id: 'all', name: 'All tickets', count: allTicketsView.count },
+          ...statusViews.map(v => ({ id: v.id, name: v.name, count: v.count })),
+        ].map(tab => {
+          const isActive = viewFilter === tab.id && productFilter === 'all';
+          return (
+            <button
+              key={tab.id}
+              onClick={() => { setViewFilter(tab.id); setProductFilter('all'); setCustomerFilter('all'); setCustomerIdFilter(null); setEngineerFilter('all'); }}
+              className={`relative flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors -mb-px border-b-2 ${
+                isActive
+                  ? 'border-[#3B82F6] text-[#2563eb]'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+              }`}
+            >
+              {tab.name}
+              <span className={`min-w-[22px] text-center text-xs font-semibold px-1.5 py-0.5 rounded-full ${isActive ? 'bg-blue-50 text-[#2563eb]' : 'bg-slate-100 text-slate-500'}`}>
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
-              {isDateRangeOpen && (
-                <div className="absolute top-full left-0 mt-1 w-40 bg-white border border-slate-200 rounded-lg shadow-lg py-1 z-50">
-                  {['all', '7days', '30days'].map(val => (
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="relative">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            placeholder="Search by subject, number or description..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-10 pl-10 pr-4 bg-white border border-slate-200 rounded-xl text-sm w-80 max-w-full placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-[#3B82F6] transition"
+          />
+        </div>
+
+        {/* Quick filters */}
+        {myWorkViews.map(view => {
+          const isActive = viewFilter === view.id && productFilter === 'all';
+          const Icon = view.id === 'assigned' ? User : AlertCircle;
+          return (
+            <button
+              key={view.id}
+              onClick={() => {
+                setViewFilter(isActive ? 'all' : view.id);
+                setProductFilter('all'); setCustomerFilter('all'); setCustomerIdFilter(null); setEngineerFilter('all');
+              }}
+              className={`flex items-center gap-2 h-10 px-3.5 rounded-xl text-sm font-medium border transition-colors whitespace-nowrap ${
+                isActive
+                  ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+              }`}
+            >
+              <Icon size={14} className={isActive ? '' : view.id === 'high_priority' ? 'text-red-400' : 'text-slate-400'} />
+              {view.name}
+              <span className={`text-xs font-semibold ${isActive ? 'text-indigo-600' : 'text-slate-400'}`}>{view.count}</span>
+            </button>
+          );
+        })}
+
+        {productViews.length > 0 && (
+          <div className="relative">
+            <button
+              onClick={() => setIsProductOpen(prev => !prev)}
+              className={`flex items-center gap-2 h-10 px-3.5 rounded-xl text-sm font-medium border transition-colors whitespace-nowrap ${
+                productFilter !== 'all' ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+              }`}
+            >
+              <Package size={14} className={productFilter !== 'all' ? '' : 'text-slate-400'} />
+              <span>{productFilter === 'all' ? 'Product' : productFilter}</span>
+              <ChevronDown size={14} className="opacity-60" />
+            </button>
+            {isProductOpen && (
+              <div className="absolute top-full left-0 mt-1.5 w-60 max-h-72 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg py-1 z-50">
+                {productViews.map(prod => {
+                  const isActive = productFilter === prod.name;
+                  return (
                     <button
-                      key={val}
-                      onClick={() => { setDateRange(val); setIsDateRangeOpen(false); }}
-                      className={`w-full text-left px-4 py-2 text-sm ${dateRange === val ? 'bg-[#eff6ff] text-[#3B82F6]' : 'text-slate-700 hover:bg-slate-50'}`}
+                      key={prod.id}
+                      onClick={() => { setProductFilter(prod.name); setViewFilter('all'); setCustomerFilter('all'); setCustomerIdFilter(null); setEngineerFilter('all'); setIsProductOpen(false); }}
+                      className={`w-full flex items-center justify-between px-4 py-2 text-sm text-left ${isActive ? 'bg-blue-50 text-[#3B82F6]' : 'text-slate-700 hover:bg-slate-50'}`}
                     >
-                      {val === 'all' ? 'All time' : val === '7days' ? 'Last 7 days' : 'Last 30 days'}
+                      <span className="truncate">{prod.name}</span>
+                      <span className="text-xs text-slate-400 ml-2">{prod.count}</span>
                     </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Priority Filter */}
-            <div className="relative">
-              <button
-                onClick={() => setIsPriorityOpen(!isPriorityOpen)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-slate-50 whitespace-nowrap"
-              >
-                <span className="capitalize">
-                  {priorityFilter === 'all' ? 'All Priorities' : priorityFilter}
-                </span>
-                <ChevronDown size={14} className="text-slate-400 shrink-0" />
-              </button>
-
-              {isPriorityOpen && (
-                <div className="absolute top-full left-0 mt-1 w-40 bg-white border border-slate-200 rounded-lg shadow-lg py-1 z-50">
-                  {['all', 'urgent', 'high', 'medium', 'low'].map(val => (
-                    <button
-                      key={val}
-                      onClick={() => { setPriorityFilter(val); setIsPriorityOpen(false); }}
-                      className={`w-full text-left px-4 py-2 text-sm capitalize ${priorityFilter === val ? 'bg-[#eff6ff] text-[#3B82F6]' : 'text-slate-700 hover:bg-slate-50'}`}
-                    >
-                      {val === 'all' ? 'All Priorities' : val}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {isAdmin && (
-              <div className="relative">
-                <button
-                  onClick={() => setIsEngineerFilterOpen(!isEngineerFilterOpen)}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-slate-50 whitespace-nowrap"
-                >
-                  <span className="truncate max-w-[110px]">
-                    {engineerFilter === 'all' ? 'All Engineers' :
-                     engineerFilter === 'unassigned' ? 'Unassigned' :
-                     engineers.find(e => e.id === engineerFilter)?.full_name || 'Filter by Engineer'}
-                  </span>
-                  <ChevronDown size={14} className="text-slate-400 shrink-0" />
-                </button>
-
-                {isEngineerFilterOpen && (
-                  <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-lg py-1 z-50">
-                    <button
-                      onClick={() => { setEngineerFilter('all'); setIsEngineerFilterOpen(false); }}
-                      className={`w-full text-left px-4 py-2 text-sm ${engineerFilter === 'all' ? 'bg-[#eff6ff] text-[#3B82F6]' : 'text-slate-700 hover:bg-slate-50'}`}
-                    >
-                      All Engineers
-                    </button>
-                    <button
-                      onClick={() => { setEngineerFilter('unassigned'); setIsEngineerFilterOpen(false); }}
-                      className={`w-full text-left px-4 py-2 text-sm ${engineerFilter === 'unassigned' ? 'bg-[#eff6ff] text-[#3B82F6]' : 'text-slate-700 hover:bg-slate-50'}`}
-                    >
-                      Unassigned
-                    </button>
-                    {engineers.length > 0 && <div className="h-px bg-slate-100 my-1"></div>}
-                    <div className="max-h-48 overflow-y-auto custom-scrollbar">
-                      {engineers.map(eng => (
-                        <button
-                          key={eng.id}
-                          onClick={() => { setEngineerFilter(eng.id); setIsEngineerFilterOpen(false); }}
-                          className={`w-full text-left px-4 py-2 text-sm ${engineerFilter === eng.id ? 'bg-[#eff6ff] text-[#3B82F6]' : 'text-slate-700 hover:bg-slate-50'}`}
-                        >
-                          <div className="font-medium truncate">{eng.full_name}</div>
-                          <div className="text-xs text-slate-400 truncate">{eng.email}</div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  );
+                })}
+                {productFilter !== 'all' && (
+                  <button
+                    onClick={() => { setProductFilter('all'); setIsProductOpen(false); }}
+                    className="w-full text-left px-4 py-2 text-sm text-slate-500 hover:bg-slate-50 border-t border-slate-100"
+                  >
+                    Clear product filter
+                  </button>
                 )}
               </div>
             )}
+          </div>
+        )}
 
-            {viewFilter === 'pending_approval' && selectedTickets.length > 0 && (
-              <button
-                onClick={handleBulkApprove}
-                disabled={bulkApproving}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50 whitespace-nowrap"
-              >
-                {bulkApproving ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> : <CheckCircle2 size={16} />}
-                Approve Selected ({selectedTickets.length})
-              </button>
-            )}
+        <div className="flex-1" />
 
-            {/* Column Visibility */}
-            <div className="relative">
-              <button
-                onClick={() => setIsColumnsMenuOpen(prev => !prev)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-slate-50 whitespace-nowrap"
-                title={t('tickets.showHideColumns')}
-              >
-                <Columns size={14} className="text-slate-400" />
-                <span>{t('tickets.columns')}</span>
-                <ChevronDown size={14} className="text-slate-400 shrink-0" />
-              </button>
+        {viewFilter === 'pending_approval' && selectedTickets.length > 0 && (
+          <button
+            onClick={handleBulkApprove}
+            disabled={bulkApproving}
+            className="flex items-center gap-2 h-10 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-medium transition-colors shadow-sm disabled:opacity-50 whitespace-nowrap"
+          >
+            {bulkApproving ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> : <CheckCircle2 size={16} />}
+            Approve Selected ({selectedTickets.length})
+          </button>
+        )}
 
-              {isColumnsMenuOpen && (
-                <div className="absolute top-full right-0 mt-1 w-52 bg-white border border-slate-200 rounded-lg shadow-lg py-1.5 z-50">
-                  <div className="px-3 pb-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">{t('tickets.toggleColumns')}</div>
-                  {COLUMN_DEFS.filter(c => !c.adminOnly || isAdmin).map(col => (
+        {/* Date range */}
+        <div className="relative">
+          <button
+            onClick={() => setIsDateRangeOpen(!isDateRangeOpen)}
+            className="flex items-center gap-2 h-10 px-3.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 hover:bg-slate-50 hover:border-slate-300 whitespace-nowrap transition-colors"
+          >
+            <Clock size={14} className="text-slate-400" />
+            <span>{dateRange === 'all' ? 'All time' : dateRange === '7days' ? 'Last 7 days' : 'Last 30 days'}</span>
+            <ChevronDown size={14} className="text-slate-400" />
+          </button>
+          {isDateRangeOpen && (
+            <div className="absolute top-full right-0 mt-1.5 w-44 bg-white border border-slate-200 rounded-xl shadow-lg py-1 z-50">
+              {['all', '7days', '30days'].map(val => (
+                <button
+                  key={val}
+                  onClick={() => { setDateRange(val); setIsDateRangeOpen(false); }}
+                  className={`w-full text-left px-4 py-2 text-sm ${dateRange === val ? 'bg-blue-50 text-[#3B82F6]' : 'text-slate-700 hover:bg-slate-50'}`}
+                >
+                  {val === 'all' ? 'All time' : val === '7days' ? 'Last 7 days' : 'Last 30 days'}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Priority */}
+        <div className="relative">
+          <button
+            onClick={() => setIsPriorityOpen(!isPriorityOpen)}
+            className="flex items-center gap-2 h-10 px-3.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 hover:bg-slate-50 hover:border-slate-300 whitespace-nowrap transition-colors"
+          >
+            <span className="capitalize">{priorityFilter === 'all' ? 'All priorities' : priorityFilter}</span>
+            <ChevronDown size={14} className="text-slate-400" />
+          </button>
+          {isPriorityOpen && (
+            <div className="absolute top-full right-0 mt-1.5 w-44 bg-white border border-slate-200 rounded-xl shadow-lg py-1 z-50">
+              {['all', 'urgent', 'high', 'medium', 'low'].map(val => (
+                <button
+                  key={val}
+                  onClick={() => { setPriorityFilter(val); setIsPriorityOpen(false); }}
+                  className={`w-full text-left px-4 py-2 text-sm capitalize ${priorityFilter === val ? 'bg-blue-50 text-[#3B82F6]' : 'text-slate-700 hover:bg-slate-50'}`}
+                >
+                  {val === 'all' ? 'All priorities' : val}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Engineer */}
+        {isAdmin && (
+          <div className="relative">
+            <button
+              onClick={() => setIsEngineerFilterOpen(!isEngineerFilterOpen)}
+              className="flex items-center gap-2 h-10 px-3.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 hover:bg-slate-50 hover:border-slate-300 whitespace-nowrap transition-colors"
+            >
+              <User size={14} className="text-slate-400" />
+              <span className="truncate max-w-[130px]">
+                {engineerFilter === 'all' ? 'All engineers' :
+                 engineerFilter === 'unassigned' ? 'Unassigned' :
+                 engineers.find(e => e.id === engineerFilter)?.full_name || 'Engineer'}
+              </span>
+              <ChevronDown size={14} className="text-slate-400" />
+            </button>
+            {isEngineerFilterOpen && (
+              <div className="absolute top-full right-0 mt-1.5 w-64 bg-white border border-slate-200 rounded-xl shadow-lg py-1 z-50">
+                <button
+                  onClick={() => { setEngineerFilter('all'); setIsEngineerFilterOpen(false); }}
+                  className={`w-full text-left px-4 py-2 text-sm ${engineerFilter === 'all' ? 'bg-blue-50 text-[#3B82F6]' : 'text-slate-700 hover:bg-slate-50'}`}
+                >
+                  All engineers
+                </button>
+                <button
+                  onClick={() => { setEngineerFilter('unassigned'); setIsEngineerFilterOpen(false); }}
+                  className={`w-full text-left px-4 py-2 text-sm ${engineerFilter === 'unassigned' ? 'bg-blue-50 text-[#3B82F6]' : 'text-slate-700 hover:bg-slate-50'}`}
+                >
+                  Unassigned
+                </button>
+                {engineers.length > 0 && <div className="h-px bg-slate-100 my-1"></div>}
+                <div className="max-h-56 overflow-y-auto custom-scrollbar">
+                  {engineers.map(eng => (
                     <button
-                      key={col.key}
-                      onClick={() => toggleColumn(col.key)}
-                      className="w-full flex items-center justify-between px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                      key={eng.id}
+                      onClick={() => { setEngineerFilter(eng.id); setIsEngineerFilterOpen(false); }}
+                      className={`w-full text-left px-4 py-2 text-sm ${engineerFilter === eng.id ? 'bg-blue-50 text-[#3B82F6]' : 'text-slate-700 hover:bg-slate-50'}`}
                     >
-                      <span>{t(COLUMN_LABEL_KEYS[col.key] || col.key)}</span>
-                      <div className={`w-4 h-4 rounded flex items-center justify-center border ${visibleColumns[col.key] ? 'bg-[#3B82F6] border-[#3B82F6] text-white' : 'border-slate-300'}`}>
-                        {visibleColumns[col.key] && <Check size={11} />}
-                      </div>
+                      <div className="font-medium truncate">{eng.full_name}</div>
+                      <div className="text-xs text-slate-400 truncate">{eng.email}</div>
                     </button>
                   ))}
                 </div>
-              )}
-            </div>
-
-            <button
-              onClick={handleExportToExcel}
-              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-slate-50 whitespace-nowrap"
-              title={t('tickets.exportToExcel')}
-            >
-              <Download size={14} className="text-slate-400" />
-              <span>{t('tickets.export')}</span>
-            </button>
-
-            {!isEmbedded && (
-              <button
-                onClick={handleOpenCreateModal}
-                className="flex items-center gap-2 px-4 py-2 bg-[#3B82F6] hover:bg-[#2563eb] text-white rounded-lg text-sm font-medium transition-colors shadow-sm whitespace-nowrap"
-              >
-                <Plus size={16} />
-                Create ticket
-              </button>
+              </div>
             )}
           </div>
-        </div>
+        )}
 
-        {/* Clean Data Table */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex-1 flex flex-col">
-          <div className="overflow-x-auto flex-1">
-            <table className="w-full text-left border-collapse min-w-[800px]">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  {viewFilter === 'pending_approval' && (
-                    <th className={`px-4 ${cellPadding} w-12 text-center relative`} style={{ width: colWidths['checkbox'] ? `${colWidths['checkbox']}px` : undefined }}>
-                      <input 
-                        type="checkbox" 
-                        checked={selectedTickets.length === filteredTickets.length && filteredTickets.length > 0}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedTickets(filteredTickets.map(t => t.id));
-                          } else {
-                            setSelectedTickets([]);
-                          }
-                        }}
-                        className="rounded border-slate-300 text-[#3B82F6] focus:ring-[#3B82F6]"
-                      />
-                      <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-slate-300/60 z-10" onMouseDown={(e) => handleResizeStart(e, 'checkbox')} />
-                    </th>
-                  )}
-                  <th className={`px-6 ${cellPadding} text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors relative group/th`} style={{ width: colWidths['title'] ? `${colWidths['title']}px` : undefined }} onClick={() => handleSort('title')}>
-                    {t('tickets.subject')} <SortIcon column="title" />
-                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-slate-300/60 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'title'); }} />
+        {/* Column visibility */}
+        <div className="relative">
+          <button
+            onClick={() => setIsColumnsMenuOpen(prev => !prev)}
+            className="flex items-center gap-2 h-10 px-3.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 hover:bg-slate-50 hover:border-slate-300 whitespace-nowrap transition-colors"
+            title={t('tickets.showHideColumns')}
+          >
+            <Columns size={14} className="text-slate-400" />
+            <span>{t('tickets.columns')}</span>
+          </button>
+          {isColumnsMenuOpen && (
+            <div className="absolute top-full right-0 mt-1.5 w-56 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 z-50">
+              <div className="px-3 pb-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">{t('tickets.toggleColumns')}</div>
+              {COLUMN_DEFS.filter(c => !c.adminOnly || isAdmin).map(col => (
+                <button
+                  key={col.key}
+                  onClick={() => toggleColumn(col.key)}
+                  className="w-full flex items-center justify-between px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  <span>{t(COLUMN_LABEL_KEYS[col.key] || col.key)}</span>
+                  <div className={`w-4 h-4 rounded flex items-center justify-center border ${visibleColumns[col.key] ? 'bg-[#3B82F6] border-[#3B82F6] text-white' : 'border-slate-300'}`}>
+                    {visibleColumns[col.key] && <Check size={11} />}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Table card */}
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse min-w-[900px]">
+            <thead>
+              <tr className="bg-slate-50/70 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                {viewFilter === 'pending_approval' && (
+                  <th className="pl-5 pr-2 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      checked={selectedTickets.length === filteredTickets.length && filteredTickets.length > 0}
+                      onChange={(e) => setSelectedTickets(e.target.checked ? filteredTickets.map(t => t.id) : [])}
+                      className="rounded border-slate-300 text-[#3B82F6] focus:ring-[#3B82F6]"
+                    />
                   </th>
-                  {visibleColumns['ticket_type'] && <th className={`px-6 ${cellPadding} text-xs font-semibold text-slate-500 uppercase tracking-wider`} style={{ width: colWidths['ticket_type'] ? `${colWidths['ticket_type']}px` : '100px' }}>
-                    {t('tickets.type')}
-                  </th>}
-                  {visibleColumns['priority'] && <th className={`px-6 ${cellPadding} text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors relative group/th`} style={{ width: colWidths['priority'] ? `${colWidths['priority']}px` : '112px' }} onClick={() => handleSort('priority')}>
+                )}
+                <th className="pl-6 pr-4 py-3 whitespace-nowrap cursor-pointer hover:text-slate-700" onClick={() => handleSort('title')}>
+                  {t('tickets.subject')} <SortIcon column="title" />
+                </th>
+                {visibleColumns['ticket_type'] && <th className="px-4 py-3 whitespace-nowrap">{t('tickets.type')}</th>}
+                {visibleColumns['priority'] && (
+                  <th className="px-4 py-3 whitespace-nowrap cursor-pointer hover:text-slate-700" onClick={() => handleSort('priority')}>
                     {t('tickets.priority')} <SortIcon column="priority" />
-                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-slate-300/60 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'priority'); }} />
-                  </th>}
-                  {visibleColumns['status_code'] && <th className={`px-6 ${cellPadding} text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors relative group/th`} style={{ width: colWidths['status_code'] ? `${colWidths['status_code']}px` : '160px' }} onClick={() => handleSort('status_code')}>
-                    {t('tickets.status')} <SortIcon column="status_code" />
-                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-slate-300/60 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'status_code'); }} />
-                  </th>}
-                  {visibleColumns['customer_name'] && <th className={`px-6 ${cellPadding} text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors relative group/th`} style={{ width: colWidths['customer_name'] ? `${colWidths['customer_name']}px` : '144px' }} onClick={() => handleSort('customer_name')}>
-                    {t('tickets.customer')} <SortIcon column="customer_name" />
-                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-slate-300/60 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'customer_name'); }} />
-                  </th>}
-                  {isAdmin && visibleColumns['assigned_to_name'] && <th className={`px-6 ${cellPadding} text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors relative group/th`} style={{ width: colWidths['assigned_to_name'] ? `${colWidths['assigned_to_name']}px` : '192px' }} onClick={() => handleSort('assigned_to_name')}>
-                    {t('tickets.assignedTo')} <SortIcon column="assigned_to_name" />
-                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-slate-300/60 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'assigned_to_name'); }} />
-                  </th>}
-                  {isAdmin && visibleColumns['legacy_assigned_to'] && <th className={`px-6 ${cellPadding} text-xs font-semibold text-slate-500 uppercase tracking-wider relative group/th`} style={{ width: colWidths['legacy_assigned_to'] ? `${colWidths['legacy_assigned_to']}px` : '160px' }}>
-                    {t('tickets.legacyAssignee')}
-                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-slate-300/60 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'legacy_assigned_to'); }} />
-                  </th>}
-                  {visibleColumns['created_at'] && <th className={`px-6 ${cellPadding} text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors relative group/th`} style={{ width: colWidths['created_at'] ? `${colWidths['created_at']}px` : '128px' }} onClick={() => handleSort('created_at')}>
-                    {t('tickets.created')} <SortIcon column="created_at" />
-                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-slate-300/60 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'created_at'); }} />
-                  </th>}
-                  {visibleColumns['sla_due_date'] && <th className={`px-6 ${cellPadding} text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors relative group/th`} style={{ width: colWidths['sla_due_date'] ? `${colWidths['sla_due_date']}px` : '144px' }} onClick={() => handleSort('sla_due_date')}>
-                    {t('tickets.slaDue')} <SortIcon column="sla_due_date" />
-                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-slate-300/60 z-10 opacity-0 group-hover/th:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, 'sla_due_date'); }} />
-                  </th>}
-                  <th className={`px-6 ${cellPadding} text-xs font-semibold text-slate-500 uppercase tracking-wider text-right relative group/th`} style={{ width: colWidths['action'] ? `${colWidths['action']}px` : '80px' }}>
                   </th>
+                )}
+                {visibleColumns['status_code'] && (
+                  <th className="px-4 py-3 whitespace-nowrap cursor-pointer hover:text-slate-700" onClick={() => handleSort('status_code')}>
+                    {t('tickets.status')} <SortIcon column="status_code" />
+                  </th>
+                )}
+                {visibleColumns['customer_name'] && (
+                  <th className="px-4 py-3 whitespace-nowrap cursor-pointer hover:text-slate-700" onClick={() => handleSort('customer_name')}>
+                    {t('tickets.customer')} <SortIcon column="customer_name" />
+                  </th>
+                )}
+                {isAdmin && visibleColumns['assigned_to_name'] && (
+                  <th className="px-4 py-3 whitespace-nowrap cursor-pointer hover:text-slate-700" onClick={() => handleSort('assigned_to_name')}>
+                    {t('tickets.assignedTo')} <SortIcon column="assigned_to_name" />
+                  </th>
+                )}
+                {isAdmin && visibleColumns['legacy_assigned_to'] && <th className="px-4 py-3 whitespace-nowrap">{t('tickets.legacyAssignee')}</th>}
+                {visibleColumns['created_at'] && (
+                  <th className="px-4 py-3 whitespace-nowrap cursor-pointer hover:text-slate-700" onClick={() => handleSort('created_at')}>
+                    {t('tickets.created')} <SortIcon column="created_at" />
+                  </th>
+                )}
+                {visibleColumns['sla_due_date'] && (
+                  <th className="px-4 py-3 whitespace-nowrap cursor-pointer hover:text-slate-700" onClick={() => handleSort('sla_due_date')}>
+                    {t('tickets.slaDue')} <SortIcon column="sla_due_date" />
+                  </th>
+                )}
+                <th className="w-12 pr-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr>
+                  <td colSpan={visibleColSpan} className="py-16 text-center text-slate-400 text-sm">{t('tickets.loading')}</td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {isLoading ? (
-                  <tr>
-                    <td colSpan={visibleColSpan} className={`px-6 py-12 ${cellPadding} text-center text-slate-400`}>{t('tickets.loading')}</td>
-                  </tr>
-                ) : sortedTickets.length === 0 ? (
-                  <tr>
-                    <td colSpan={visibleColSpan} className={`px-6 py-12 ${cellPadding} text-center text-slate-400`}>{t('tickets.noTickets')}</td>
-                  </tr>
-                ) : (
-                  sortedTickets.map(ticket => (
-                    <tr 
-                      key={ticket.id} 
+              ) : sortedTickets.length === 0 ? (
+                <tr>
+                  <td colSpan={visibleColSpan} className="py-16 text-center">
+                    <Inbox size={28} className="mx-auto text-slate-300 mb-2" />
+                    <div className="text-sm text-slate-500">{t('tickets.noTickets')}</div>
+                  </td>
+                </tr>
+              ) : (
+                sortedTickets.map(ticket => {
+                  const tk = ticket as any;
+                  const isDev = tk.ticket_type === 'DEVELOPMENT';
+                  const accent = isDev ? 'bg-indigo-300' : priorityAccent(ticket.priority);
+                  const noParts = String(tk.ticket_no || '').split(' - ');
+                  const shortNo = noParts[0] === 'DV' ? `DV-${noParts[1] || ''}` : noParts[0];
+                  const created = ticket.created_at ? new Date(ticket.created_at) : null;
+                  return (
+                    <tr
+                      key={ticket.id}
                       onClick={() => {
-                        if (onTicketSelect) {
-                          onTicketSelect(ticket.id);
-                        } else {
-                          navigate(`/tickets/${ticket.id}`);
-                        }
+                        if (onTicketSelect) onTicketSelect(ticket.id);
+                        else navigate(`/tickets/${ticket.id}`);
                       }}
-                      className="hover:bg-slate-50/50 transition-colors cursor-pointer group"
-                      title="Click to open ticket"
+                      className="group cursor-pointer border-b border-slate-100 last:border-b-0 hover:bg-slate-50/80 transition-colors"
                     >
                       {viewFilter === 'pending_approval' && (
-                        <td className={`px-4 ${cellPadding} text-center`} onClick={(e) => e.stopPropagation()}>
-                          <input 
-                            type="checkbox" 
+                        <td className="pl-5 pr-2 py-4" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
                             checked={selectedTickets.includes(ticket.id)}
                             onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedTickets([...selectedTickets, ticket.id]);
-                              } else {
-                                setSelectedTickets(selectedTickets.filter(id => id !== ticket.id));
-                              }
+                              if (e.target.checked) setSelectedTickets([...selectedTickets, ticket.id]);
+                              else setSelectedTickets(selectedTickets.filter(id => id !== ticket.id));
                             }}
                             className="rounded border-slate-300 text-[#3B82F6] focus:ring-[#3B82F6]"
                           />
                         </td>
                       )}
-                      <td className={`px-6 ${cellPadding}`}>
-                        <div className="flex items-center gap-1.5">
-                          {(ticket as any).is_express && (
-                            <span className="inline-flex items-center gap-0.5 shrink-0 bg-red-50 text-red-600 border border-red-200 rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide" title="Submitted via Express Ticket">
+
+                      {/* Subject */}
+                      <td className="relative pl-6 pr-4 py-4 min-w-[320px] w-[38%]">
+                        <span className={`absolute left-0 top-3 bottom-3 w-1 rounded-r-full ${accent}`} />
+                        <div className="text-sm font-semibold text-slate-900 group-hover:text-[#2563eb] transition-colors line-clamp-2 leading-snug" title={ticket.title}>
+                          {ticket.title}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5 text-xs text-slate-500" title={tk.ticket_no || ''}>
+                          {shortNo && <span className="font-mono text-[11px] bg-slate-100 text-slate-600 rounded px-1.5 py-0.5">#{shortNo}</span>}
+                          {tk.is_express && (
+                            <span className="inline-flex items-center gap-0.5 bg-red-50 text-red-600 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide" title="Submitted via Express Ticket">
                               ⚡ Express
                             </span>
                           )}
-                          <div className="text-sm font-semibold text-slate-900 group-hover:text-[#3B82F6] transition-colors line-clamp-1">{ticket.title}</div>
-                        </div>
-                        <div className="text-xs text-slate-500 mt-1 line-clamp-1">
-                          {ticket.product_name} • {
-                            (i18n.language === 'ar' && ticket.diagnostic_category?.category_name_ar)
-                              ? ticket.diagnostic_category.category_name_ar
-                              : (ticket.diagnostic_category?.category_name || ticket.category)
-                          }
+                          {isDev && !visibleColumns['ticket_type'] && (
+                            <span className="inline-flex items-center bg-indigo-50 text-indigo-700 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                              Development
+                            </span>
+                          )}
+                          <span className="truncate max-w-[220px]">{ticket.product_name}</span>
                         </div>
                       </td>
+
                       {visibleColumns['ticket_type'] && (
-                        <td className={`px-6 ${cellPadding}`}>
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            (ticket as any).ticket_type === 'DEVELOPMENT' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'
-                          }`}>
-                            {(ticket as any).ticket_type === 'DEVELOPMENT' ? t('ticketDetail.developmentTicket') : t('tickets.support')}
+                        <td className="px-4 py-4">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${isDev ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
+                            {isDev ? t('ticketDetail.developmentTicket') : t('tickets.support')}
                           </span>
                         </td>
                       )}
+
                       {visibleColumns['priority'] && (
-                        <td className={`px-6 ${cellPadding}`}>
-                          {(ticket as any).ticket_type === 'DEVELOPMENT' ? (
-                            <span className="text-slate-300 italic text-xs">—</span>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          {isDev ? (
+                            <span className="text-slate-300">—</span>
                           ) : (
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${getPriorityStyle(ticket.priority)}`}>
+                            <span className="inline-flex items-center gap-2 text-sm font-medium text-slate-700 capitalize">
+                              <span className={`w-2 h-2 rounded-full ${priorityAccent(ticket.priority)}`} />
                               {ticket.priority || 'Medium'}
                             </span>
                           )}
                         </td>
                       )}
+
                       {visibleColumns['status_code'] && (
-                        <td className={`px-6 ${cellPadding} text-sm font-medium`}>
-                          {getStatusDisplay(ticket.status_code as string)}
-                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">{renderStatusBadge(ticket.status_code as string)}</td>
                       )}
+
                       {visibleColumns['customer_name'] && (
-                        <td className={`px-6 ${cellPadding} text-sm text-slate-600 truncate max-w-[120px]`}>
-                          {ticket.customer_name || 'N/A'}
-                        </td>
-                      )}
-                      {isAdmin && visibleColumns['assigned_to_name'] && (
-                        <td className={`px-6 ${cellPadding}`}>
-                          <div className="flex items-center gap-2">
-                            {ticket.assigned_to ? (
-                              <>
-                                <img
-                                  src={`https://ui-avatars.com/api/?name=${encodeURIComponent(ticket.assigned_to_name || '?')}&background=dbeafe&color=1d4ed8&bold=true`}
-                                  className="w-6 h-6 rounded-full shrink-0"
-                                  alt="avatar"
-                                />
-                                <span className="text-sm text-slate-700 font-medium truncate max-w-[100px]">{ticket.assigned_to_name}</span>
-                              </>
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5 text-sm text-slate-400 italic truncate max-w-[120px]">
-                                <User size={13} className="text-slate-300 shrink-0" /> Unassigned
-                              </span>
-                            )}
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-2.5 max-w-[240px]" title={ticket.customer_name || ''}>
+                            <span className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 text-[11px] font-semibold flex items-center justify-center shrink-0">
+                              {initialsOf(ticket.customer_name)}
+                            </span>
+                            <span className="text-sm text-slate-700 truncate">{ticket.customer_name || 'N/A'}</span>
                           </div>
                         </td>
                       )}
+
+                      {isAdmin && visibleColumns['assigned_to_name'] && (
+                        <td className="px-4 py-4">
+                          {ticket.assigned_to ? (
+                            <div className="flex items-center gap-2.5 max-w-[200px]" title={ticket.assigned_to_name || ''}>
+                              <span className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 text-[11px] font-semibold flex items-center justify-center shrink-0">
+                                {initialsOf(ticket.assigned_to_name)}
+                              </span>
+                              <span className="text-sm text-slate-700 truncate">{ticket.assigned_to_name}</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2.5 text-slate-400">
+                              <span className="w-8 h-8 rounded-full border border-dashed border-slate-300 flex items-center justify-center shrink-0">
+                                <User size={14} />
+                              </span>
+                              <span className="text-sm">Unassigned</span>
+                            </div>
+                          )}
+                        </td>
+                      )}
+
                       {isAdmin && visibleColumns['legacy_assigned_to'] && (
-                        <td className={`px-6 ${cellPadding} text-sm text-slate-600 truncate max-w-[140px]`}>
-                          {ticket.legacy_assigned_to || <span className="text-slate-300 italic">—</span>}
+                        <td className="px-4 py-4 text-sm text-slate-600">
+                          <div className="truncate max-w-[160px]">{ticket.legacy_assigned_to || <span className="text-slate-300">—</span>}</div>
                         </td>
                       )}
+
                       {visibleColumns['created_at'] && (
-                        <td className={`px-6 ${cellPadding} text-sm text-slate-500 whitespace-nowrap`}>
-                          {new Date(ticket.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="text-sm text-slate-700">{created ? timeAgo(created) : ''}</div>
+                          <div className="text-xs text-slate-400 mt-0.5">
+                            {created ? created.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
+                          </div>
                         </td>
                       )}
+
                       {visibleColumns['sla_due_date'] && (
-                        <td className={`px-6 ${cellPadding} text-sm whitespace-nowrap`}>
-                          {renderSlaBadge(ticket)}
-                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm">{renderSlaBadge(ticket)}</td>
                       )}
-                      <td className={`px-6 ${cellPadding} text-right`}>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/tickets/${ticket.id}`);
-                          }}
-                          className="text-[#3B82F6] hover:text-[#2563eb] transition-colors bg-blue-50 hover:bg-blue-100 p-2 rounded-lg opacity-0 group-hover:opacity-100 inline-flex items-center justify-center border border-blue-100 hover:border-blue-200 shadow-sm"
-                          title="Open ticket"
-                        >
-                          <Eye size={18} />
-                        </button>
+
+                      <td className="pr-4 py-4 text-right">
+                        <ChevronRight size={18} className="text-slate-300 group-hover:text-[#3B82F6] group-hover:translate-x-0.5 transition rtl:rotate-180" />
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-          
-          {/* Pagination Bar */}
-          <div className="px-6 py-4 border-t border-slate-200 bg-slate-50/50 flex items-center justify-between text-sm text-slate-500">
-            <div>Showing {(page - 1) * limit + 1} to {Math.min(page * limit, totalCount)} of {totalCount} tickets</div>
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={() => setPage(p => p - 1)}
-                disabled={page <= 1}
-                className="px-3 py-1 rounded bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-white transition-colors"
-              >
-                Previous
-              </button>
-              <button 
-                onClick={() => setPage(p => p + 1)}
-                disabled={page >= totalPages || totalPages === 0}
-                className="px-3 py-1 rounded bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-white transition-colors"
-              >
-                Next
-              </button>
-            </div>
-          </div>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
 
+        {/* Pagination */}
+        <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between text-sm text-slate-500">
+          <div>
+            {totalCount === 0
+              ? 'No tickets'
+              : <>Showing <span className="font-medium text-slate-700">{(page - 1) * limit + 1}–{Math.min(page * limit, totalCount)}</span> of <span className="font-medium text-slate-700">{totalCount}</span></>}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage(p => p - 1)}
+              disabled={page <= 1}
+              className="h-9 px-3.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white transition-colors font-medium text-slate-700"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setPage(p => p + 1)}
+              disabled={page >= totalPages || totalPages === 0}
+              className="h-9 px-3.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white transition-colors font-medium text-slate-700"
+            >
+              Next
+            </button>
+          </div>
+        </div>
       </div>
 
       {isCreateAction && (

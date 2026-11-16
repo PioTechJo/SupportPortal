@@ -14,6 +14,7 @@ import { TicketDetail } from './pages/TicketDetail';
 import { Organizations } from './pages/Organizations';
 import { ReportBuilder } from './pages/ReportBuilder';
 import { AgingReport } from './pages/admin/AgingReport';
+import { PioTechReports } from './pages/admin/PioTechReports';
 import { TicketLifecycle } from './pages/admin/TicketLifecycle';
 import ResolutionApprovals from './pages/ResolutionApprovals';
 import Users from './pages/Users';
@@ -194,6 +195,14 @@ export default function App() {
                 element={
                   <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER']}>
                     <ReportBuilder />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/admin/pio-tech-reports" 
+                element={
+                  <ProtectedRoute allowedRoles={['admin', 'administrator', 'CEO', 'SUPPORT_MANAGER', 'SYS_ADMIN']}>
+                    <PioTechReports />
                   </ProtectedRoute>
                 } 
               />

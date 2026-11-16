@@ -24,6 +24,13 @@ interface TimelineEvent {
   icon: React.ReactNode;
 }
 
+function styleForStatus(code: string): { type: TimelineEvent['type']; color: string; icon: React.ReactNode } {
+  if (code === 'RESOLVED') return { type: 'resolved', color: '#10B981', icon: <CheckCircle2 size={16} /> };
+  if (code === 'CLOSED') return { type: 'closed', color: '#1F2937', icon: <CheckCircle size={16} /> };
+  if (code === 'APPROVED') return { type: 'approved', color: '#059669', icon: <Lock size={16} /> };
+  return { type: 'status_changed', color: '#F59E0B', icon: <ChevronRight size={16} /> };
+}
+
 const TicketListPicker: React.FC<{ onSelect: (id: string) => void, isRTL: boolean, t: any }> = ({ onSelect, isRTL, t }) => {
   const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -164,12 +171,21 @@ export const TicketLifecycle: React.FC = () => {
         .eq('table_name', 'tickets')
         .eq('record_id', ticketData.id);
 
-      // 3. Fetch System Comments (Escalations/Returns)
+      // 3. Fetch escalations. They are stored as internal comments carrying an
+      // escalated_team_id (and escalation_returned_at once handed back) — not as
+      // system-generated comments with magic text.
       const { data: comments } = await supabase
         .from('ticket_comments')
-        .select('*')
+        .select('id, created_at, author_id, escalated_team_id, escalated_developer_name, escalation_returned_at, teams(team_name)')
         .eq('ticket_id', ticketData.id)
-        .eq('is_system_generated', true);
+        .not('escalated_team_id', 'is', null);
+
+      // 3b. Status history — every status transition is recorded here (the audit
+      // log only holds some of them).
+      const { data: history } = await supabase
+        .from('ticket_status_history')
+        .select('id, old_status_id, new_status_id, changed_by, change_notes, changed_at')
+        .eq('ticket_id', ticketData.id);
 
       // 4. Fetch Statuses mapping
       const { data: statuses } = await supabase.from('ticket_statuses').select('*');
@@ -207,8 +223,13 @@ export const TicketLifecycle: React.FC = () => {
             color: '#8B5CF6', // purple
             icon: <User size={16} />
           });
-        } else if (a.action_type === 'STATUS_CHANGE' || a.action_type === 'RESOLUTION_SUBMITTED' || a.action_type === 'TICKET_CLOSED' || a.action_type === 'RESOLUTION_APPROVED') {
+        } else if (a.action_type === 'STATUS_CHANGE' || a.action_type === 'RESOLUTION_SUBMITTED' || a.action_type === 'RESOLUTION_REJECTED' || a.action_type === 'TICKET_CLOSED' || a.action_type === 'RESOLUTION_APPROVED') {
           const s = statusMap[newVal?.status_id];
+          // Skip if the same transition is already shown from the status history.
+          const auditTime = new Date(a.changed_at).getTime();
+          if ((history || []).some((h: any) => h.new_status_id === newVal?.status_id && Math.abs(new Date(h.changed_at).getTime() - auditTime) < 10000)) {
+            continue;
+          }
           const code = (s?.status_code || '').toUpperCase();
           let type = 'status_changed';
           let color = '#F59E0B'; // yellow/orange
@@ -230,30 +251,46 @@ export const TicketLifecycle: React.FC = () => {
         }
       }
 
-      // Parse Comments
+      // Status transitions
+      for (const h of history || []) {
+        if (h.changed_by) userIds.add(h.changed_by);
+        // Assignment already has its own event.
+        if (h.change_notes === 'Ticket assigned to engineer') continue;
+        const s = statusMap[h.new_status_id];
+        const code = (s?.status_code || '').toUpperCase();
+        rawEvents.push({
+          id: `history-${h.id}`,
+          createdAt: new Date(h.changed_at),
+          actorId: h.changed_by,
+          details: s?.status_name || code,
+          ...styleForStatus(code),
+        });
+      }
+
+      // Escalations and their returns
       for (const c of comments || []) {
         if (c.author_id) userIds.add(c.author_id);
-        const txt = c.comment_text || '';
-        
-        if (txt.includes('Escalation returned')) {
+        const teamRow: any = Array.isArray(c.teams) ? c.teams[0] : c.teams;
+        const teamName = teamRow?.team_name || 'Unknown team';
+        const dev = c.escalated_developer_name ? ` (${c.escalated_developer_name})` : '';
+        rawEvents.push({
+          id: c.id,
+          type: 'escalated',
+          createdAt: new Date(c.created_at),
+          actorId: c.author_id,
+          details: `${teamName}${dev}`,
+          color: '#F97316', // orange
+          icon: <ArrowLeftRight size={16} />
+        });
+        if (c.escalation_returned_at) {
           rawEvents.push({
-            id: c.id,
+            id: `${c.id}-returned`,
             type: 'returned',
-            createdAt: new Date(c.created_at),
-            actorId: c.author_id,
+            createdAt: new Date(c.escalation_returned_at),
+            actorId: null,
+            actorLabel: c.escalated_developer_name || teamName,
             details: '',
             color: '#F43F5E', // rose
-            icon: <ArrowLeftRight size={16} />
-          });
-        } else if (txt.includes('Ticket escalated')) {
-          const team = txt.split('team: ')[1] || txt.split('to: ')[1] || 'Unknown';
-          rawEvents.push({
-            id: c.id,
-            type: 'escalated',
-            createdAt: new Date(c.created_at),
-            actorId: c.author_id,
-            details: team,
-            color: '#F97316', // orange
             icon: <ArrowLeftRight size={16} />
           });
         }
@@ -270,7 +307,7 @@ export const TicketLifecycle: React.FC = () => {
       const finalEvents: TimelineEvent[] = rawEvents
         .map(re => ({
           ...re,
-          actorName: userMap[re.actorId] || 'System',
+          actorName: re.actorLabel || userMap[re.actorId] || 'System',
           details: re.devId ? (userMap[re.devId] || re.details) : re.details
         }))
         .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
@@ -288,8 +325,10 @@ export const TicketLifecycle: React.FC = () => {
   loadTimeline();
 }, [selectedTicketId, t]);
 
-  const totalDuration = events.length > 0 
-    ? formatDistance(events[events.length - 1].createdAt, events[0].createdAt)
+  // A finished ticket's duration ends at its last event; an open one is still running.
+  const isFinished = ['CLOSED', 'APPROVED', 'RESOLVED'].includes(String(ticket?.status?.status_code || '').toUpperCase());
+  const totalDuration = events.length > 0
+    ? formatDistance(isFinished ? events[events.length - 1].createdAt : new Date(), events[0].createdAt)
     : '-';
 
   return (

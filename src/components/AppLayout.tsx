@@ -22,6 +22,7 @@ import {
   Settings2,
   Brain,
   TableProperties,
+  FileSpreadsheet,
   ChevronDown,
   Menu,
   Clock,
@@ -54,6 +55,7 @@ const getBreadcrumbTitle = (pathname: string, t: any) => {
     'admin/data-assistant': 'askYourData',
     'portal/data-assistant': 'askYourData',
     'admin/reports': 'reportBuilder',
+    'admin/pio-tech-reports': 'pioTechReports',
     'admin/aging-report': 'agingReport',
     'diagnostic-builder': 'diagnosticBuilder',
     'recommendation-rules': 'recommendationRules',
@@ -222,6 +224,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const adminReportingItems = [
     { name: 'askYourData', path: '/admin/data-assistant', icon: Database },
     { name: 'reportBuilder', path: '/admin/reports', icon: TableProperties },
+    { name: 'pioTechReports', path: '/admin/pio-tech-reports', icon: FileSpreadsheet },
     { name: 'agingReport', path: '/admin/aging-report', icon: Clock },
     { name: 'ticketLifecycle', path: '/admin/ticket-lifecycle', icon: History },
   ];

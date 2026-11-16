@@ -92,6 +92,7 @@
     "overview": "نظرة عامة",
     "askYourData": "اسأل بياناتك",
     "reportBuilder": "منشئ التقارير",
+    "pioTechReports": "تقارير بيو تك",
     "agingReport": "تقرير التقادم",
     "diagnosticBuilder": "منشئ التشخيص",
     "recommendationRules": "قواعد التوصيات",
@@ -191,6 +192,11 @@
     "stepCategory": "الفئة",
     "stepQuestions": "الأسئلة",
     "stepChat": "المحادثة",
+    "stepSelfService": "فحوصات سريعة",
+    "selfServiceTitle": "قبل الإرسال: فحوصات سريعة لـ {{product}}",
+    "selfServiceSubtitle": "اختر ما ينطبق عليك (واحداً أو أكثر) وأضف ملاحظاتك إن أردت. هذه الخطوة اختيارية ويمكنك المتابعة بدون اختيار أي شيء.",
+    "selfServiceContinue": "متابعة",
+    "preventiveRecommendation": "توصية وقائية",
     "stepDetails": "التفاصيل",
     "followersTitle": "مين لازم يوصله إشعار؟",
     "followersSubtitle": "اختر مستخدم أو أكثر من البنك حتى يوصله إشعارات وتحديثات هالتذكرة.",
@@ -263,7 +269,9 @@
     "pleaseProvide": "يرجى تقديم التفاصيل لمساعدتنا في تشخيص المشكلة.",
     "subjectTitle": "الموضوع / العنوان *",
     "detailedDescription": "الوصف التفصيلي *",
-    "thinking": "يفكر..."
+    "thinking": "يفكر...",
+    "selfServiceNotePlaceholder": "إجابتك أو ملاحظاتك (اختياري)",
+    "selfServiceSkip": "تخطي"
   },
   "ticketDetail": {
     "back": "رجوع",
