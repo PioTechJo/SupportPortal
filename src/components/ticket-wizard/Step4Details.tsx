@@ -42,21 +42,28 @@ export const Step4Details: React.FC<Step4DetailsProps> = ({
 
   return (
     <div className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-4">
-      <div className="flex-1 space-y-6">
-        <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-[8px] mb-4">
-            <Package size={14} className="text-slate-500" />
-            <span className="text-[12px] font-medium text-slate-700">{productName || 'Product'}</span>
-            <ChevronRight size={14} className="rtl:rotate-180 text-slate-400" />
-            <span className="text-[12px] font-medium text-slate-700">{categoryName || t('wizard.stepCategory')}</span>
+      <div className="flex-1 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-[16px] font-medium text-slate-800">{t("wizard.issueDetails")}</h3>
+            <p className="text-[12px] text-slate-500 mt-0.5">{t("wizard.pleaseProvide")}</p>
           </div>
-          <h3 className="text-[18px] font-medium text-slate-800">{t("wizard.issueDetails")}</h3>
-          <p className="text-[13px] text-slate-500 mt-1">{t("wizard.pleaseProvide")}</p>
+          {/* The category step no longer exists, so only show it when there is one. */}
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-[8px] shrink-0 max-w-[55%]">
+            <Package size={13} className="text-slate-500 shrink-0" />
+            <span className="text-[12px] font-medium text-slate-700 truncate">{productName || 'Product'}</span>
+            {categoryName && (
+              <>
+                <ChevronRight size={13} className="rtl:rotate-180 text-slate-400 shrink-0" />
+                <span className="text-[12px] font-medium text-slate-700 truncate">{categoryName}</span>
+              </>
+            )}
+          </div>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           <div>
-            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">{t("wizard.subjectTitle")}</label>
+            <label className="block text-[13px] font-medium text-slate-700 mb-1">{t("wizard.subjectTitle")}</label>
             <input 
               type="text" 
               value={title}
@@ -68,18 +75,18 @@ export const Step4Details: React.FC<Step4DetailsProps> = ({
           </div>
           
           <div>
-            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">{t("wizard.detailedDescription")}</label>
+            <label className="block text-[13px] font-medium text-slate-700 mb-1">{t("wizard.detailedDescription")}</label>
             <textarea 
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Explain what happened..."
-              className="w-full border border-slate-200 rounded-[8px] px-3 py-2 text-[14px] h-32 focus:ring-[#f97316] focus:border-[#f97316] outline-none transition-colors shadow-sm"
+              className="w-full border border-slate-200 rounded-[8px] px-3 py-2 text-[14px] h-24 resize-none focus:ring-[#f97316] focus:border-[#f97316] outline-none transition-colors shadow-sm"
               required
             />
           </div>
 
           <div>
-            <label className="block text-[13px] font-medium text-slate-700 mb-1.5">
+            <label className="block text-[13px] font-medium text-slate-700 mb-1">
               {t("wizard.attachments", { defaultValue: "Attachments (optional)" })}
             </label>
             <input
@@ -129,7 +136,7 @@ export const Step4Details: React.FC<Step4DetailsProps> = ({
         {error && <div className="p-3 bg-red-50 text-red-600 rounded-[8px] text-[13px] font-medium">{error}</div>}
       </div>
 
-      <div className="pt-6 mt-6 border-t border-slate-200 flex justify-between items-center shrink-0">
+      <div className="pt-3 mt-3 border-t border-slate-200 flex justify-between items-center shrink-0">
         <button onClick={onBack} className="flex items-center gap-2 px-4 py-2 border-[0.5px] border-slate-200 rounded-[8px] text-[14px] font-medium text-slate-600 hover:bg-slate-50 transition-colors">
           <ArrowLeft className="rtl:rotate-180" size={16} /> {t('wizard.back')}
         </button>

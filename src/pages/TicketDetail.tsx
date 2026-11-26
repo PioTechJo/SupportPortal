@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
@@ -83,6 +83,9 @@ export const TicketDetail: React.FC = () => {
   const [loadingEngineers, setLoadingEngineers] = useState(false);
   const [engineerSearch, setEngineerSearch] = useState("");
   const [assigning, setAssigning] = useState(false);
+  // The "Support Action" status row, looked up once (when the assign dropdown
+  // opens) so choosing an engineer doesn't need an extra round trip.
+  const investigationStatusRef = useRef<{ id: string; status_name: string } | null>(null);
 
   const [showResolveModal, setShowResolveModal] = useState(false);
   const [justificationText, setJustificationText] = useState("");
@@ -706,10 +709,14 @@ export const TicketDetail: React.FC = () => {
       const newDateIso = new Date(newCreatedDate).toISOString();
       const oldCreatedAt = ticket.created_at;
 
-      const { error } = await supabase
+      // A database trigger recomputes sla_due_date from the new created date,
+      // so read the new value back from the row.
+      const { data: updatedRow, error } = await supabase
         .from("tickets")
         .update({ created_at: newDateIso })
-        .eq("id", id);
+        .eq("id", id)
+        .select("sla_due_date")
+        .maybeSingle();
 
       if (error) throw error;
 
@@ -722,7 +729,17 @@ export const TicketDetail: React.FC = () => {
         changed_by: user.id,
       });
 
-      setTicket((prev: any) => (prev ? { ...prev, created_at: newDateIso } : prev));
+      setTicket((prev: any) =>
+        prev
+          ? {
+              ...prev,
+              created_at: newDateIso,
+              ...(updatedRow?.sla_due_date && updatedRow.sla_due_date !== prev.sla_due_date
+                ? { sla_due_date: updatedRow.sla_due_date, sla_due_date_override_reason: null }
+                : {}),
+            }
+          : prev,
+      );
       setEditingCreatedDate(false);
     } catch (err) {
       console.error("Error updating created date:", err);
@@ -1080,6 +1097,17 @@ export const TicketDetail: React.FC = () => {
   const handleAssignClick = async () => {
     setShowAssignDropdown(!showAssignDropdown);
     setEngineerSearch("");
+    if (!showAssignDropdown && !investigationStatusRef.current) {
+      // Prefetch in the background while the admin picks an engineer.
+      void (async () => {
+        const { data } = await supabase
+          .from("ticket_statuses")
+          .select("id, status_name")
+          .eq("status_code", "INVESTIGATION")
+          .single();
+        if (data) investigationStatusRef.current = data;
+      })();
+    }
     if (!showAssignDropdown && engineers.length === 0) {
       setLoadingEngineers(true);
       try {
@@ -1133,13 +1161,17 @@ export const TicketDetail: React.FC = () => {
   const handleAssignTicket = async (engineerId: string) => {
     setAssigning(true);
     try {
-      const { data: statusData, error: statusError } = await supabase
-        .from("ticket_statuses")
-        .select("id, status_name")
-        .eq("status_code", "INVESTIGATION")
-        .single();
-
-      if (statusError) throw statusError;
+      let statusData = investigationStatusRef.current;
+      if (!statusData) {
+        const { data, error: statusError } = await supabase
+          .from("ticket_statuses")
+          .select("id, status_name")
+          .eq("status_code", "INVESTIGATION")
+          .single();
+        if (statusError) throw statusError;
+        statusData = data;
+        investigationStatusRef.current = data;
+      }
 
       const oldAssignedTo = ticket.assigned_to;
       const oldStatusId = ticket.status_id;
@@ -1155,42 +1187,50 @@ export const TicketDetail: React.FC = () => {
 
       if (updateError) throw updateError;
 
-      await supabase.from("audit_log").insert({
-        table_name: "tickets",
-        record_id: id,
-        action_type: "ASSIGNMENT",
-        old_value: { assigned_to: oldAssignedTo },
-        new_value: { assigned_to: engineerId },
-        changed_by: user?.id,
-      });
-
-      await supabase.from("ticket_status_history").insert({
-        ticket_id: id,
-        old_status_id: oldStatusId,
-        new_status_id: statusData.id,
-        changed_by: user?.id,
-        change_notes: "Ticket assigned to engineer",
-      });
-
-      // Send notification to Engineer
       const ticketNo = ticket.ticket_no || ticket.id.substring(0, 8).toUpperCase();
+
+      // Audit log, status history and the in-app notification to the engineer
+      // are independent bookkeeping writes: run them together, in the
+      // background, so the Assign button only waits for the ticket update itself.
+      void (async () => {
       try {
-        const { error: notifError } = await supabase.from("notifications").insert({
-          profile_id: engineerId,
-          content: `You have been assigned to ticket ${ticketNo}`,
-          type: "ticket_assigned",
-          is_read: false,
-          link_ticket_id: id,
-        });
-        if (notifError) {
-          console.error("Failed to insert notification for assigned engineer:", notifError);
+        const [, , notifResult] = await Promise.all([
+          supabase.from("audit_log").insert({
+            table_name: "tickets",
+            record_id: id,
+            action_type: "ASSIGNMENT",
+            old_value: { assigned_to: oldAssignedTo },
+            new_value: { assigned_to: engineerId },
+            changed_by: user?.id,
+          }),
+          supabase.from("ticket_status_history").insert({
+            ticket_id: id,
+            old_status_id: oldStatusId,
+            new_status_id: statusData.id,
+            changed_by: user?.id,
+            change_notes: "Ticket assigned to engineer",
+          }),
+          supabase.from("notifications").insert({
+            profile_id: engineerId,
+            content: `You have been assigned to ticket ${ticketNo}`,
+            type: "ticket_assigned",
+            is_read: false,
+            link_ticket_id: id,
+          }),
+        ]);
+        if (notifResult?.error) {
+          console.error("Failed to insert notification for assigned engineer:", notifResult.error);
         }
-      } catch (notifErr) {
-        console.error("Unexpected error while sending notification:", notifErr);
+      } catch (writeErr) {
+        console.error("Unexpected error while recording the assignment:", writeErr);
       }
+      })();
 
       const assignedEng = engineers.find((e) => e.id === engineerId);
 
+      // The emails go out in the background so the Assign button doesn't wait
+      // on resolving recipients and on the mail service.
+      void (async () => {
       // Send email to Engineer (and any other configured recipients)
       if (assignedEng?.email) {
         try {
@@ -1215,7 +1255,9 @@ export const TicketDetail: React.FC = () => {
       // Send the bank its original "ticket created" style email now, at
       // assignment time (per the latest request), with an added note that
       // it's been assigned and is being worked on.
-      try {
+      // A REASSIGNMENT (the ticket already had an assignee) is internal: the
+      // bank is not emailed again, only the new assignee (and support team CC).
+      if (!oldAssignedTo) try {
         const formatEmailDate = (d: Date) =>
           d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
         const priorityName = ticket.priority?.priority_name || (ticket.ticket_type === 'DEVELOPMENT' ? 'N/A' : 'Low');
@@ -1236,7 +1278,7 @@ export const TicketDetail: React.FC = () => {
           { createdById: ticket.created_by, followerIds, assigneeId: engineerId },
           {
             subject: `Your ticket ${ticketNo} - ${ticket.subject} has been created`,
-            body: `Dears,\n\nWe received your request ticket number ${ticketNo}.\n\nIt is forwarded to the department in charge who will contact you soon to handle your request.\nPlease refer to the above ticket number for any future communication in relation to this issue.\n\nTickets Details:\n\nThe Ticket title is ${ticket.subject} , And problem description is ${customerEmailVars.description} .\n\n- Priority : ${priorityName}\n- Expected Start Date : ${customerEmailVars.start_date}\n- Expected End Date : ${customerEmailVars.end_date}\n\nYour ticket has been assigned to ${customerEmailVars.assignee_name} from our support team and is now being worked on.\n\nBest regards,\n\nPio-Tech Support Team`,
+            body: `Dears,\n\nWe received your request ticket number ${ticketNo}.\n\nIt is forwarded to the department in charge who will contact you soon to handle your request.\nPlease refer to the above ticket number for any future communication in relation to this issue.\n\nTickets Details:\n\nThe Ticket title is ${ticket.subject} , And problem description is ${customerEmailVars.description} .\n\n- Priority : ${priorityName}\n- Expected Start Date : ${customerEmailVars.start_date}\n- Expected End Date : ${customerEmailVars.end_date}\n\nBest regards,\n\nPio-Tech Support Team`,
             defaultRoles: ['customer', 'assignee'],
             defaultCcRoles: ['support_email'],
           }
@@ -1245,6 +1287,7 @@ export const TicketDetail: React.FC = () => {
       } catch (emailErr) {
         console.error("Unexpected error invoking send-email for customer:", emailErr);
       }
+      })();
 
       setTicket({
         ...ticket,
@@ -1664,17 +1707,18 @@ export const TicketDetail: React.FC = () => {
   return (
     <div className="flex flex-col h-full bg-slate-50 min-h-screen font-sans">
       {/* Top Bar */}
-      <div className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between sticky top-0 z-10 shrink-0 shadow-sm">
-        {/* Breadcrumb & Title Container */}
-        <div className="flex items-center gap-4">
+      <div className="bg-white border-b border-slate-200 px-6 md:px-8 py-3 flex flex-col gap-2.5 sticky top-0 z-10 shrink-0 shadow-sm">
+       {/* Row 1: back + ticket number/badges on the left, actions on the right */}
+       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 min-w-0">
           <button
             onClick={() => navigate(-1)}
             className="flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-[#3B82F6] transition-colors"
           >
             <ArrowLeft size={16} />{t("ticketDetail.back")}</button>
           <div className="h-4 w-px bg-slate-300"></div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-mono font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{ticket.ticket_no || `TK-${id?.slice(0, 8).toUpperCase()}`}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-mono font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded whitespace-nowrap">{ticket.ticket_no || `TK-${id?.slice(0, 8).toUpperCase()}`}</span>
             <span
               className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ms-1 ${getStatusColor(ticket.status?.status_code || ticket.status_code || ticket.status)}`}
             >
@@ -1691,14 +1735,10 @@ export const TicketDetail: React.FC = () => {
               </span>
             )}
           </div>
-          <div className="h-4 w-px bg-slate-300 ms-1"></div>
-          <h1 className="text-xl font-bold text-slate-900 line-clamp-1 pe-4 ms-1">
-            {ticket.title || ticket.subject}
-          </h1>
         </div>
 
         {/* Actions Container */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {canEscalateToManagement && (
             <button
               onClick={() => {
@@ -1706,7 +1746,7 @@ export const TicketDetail: React.FC = () => {
                 setManagementEscalationError(null);
                 setIsEscalatingToManagement(true);
               }}
-              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg text-sm font-medium transition-colors shadow-sm"
+              className="flex items-center gap-2 px-3.5 py-2 whitespace-nowrap bg-red-600 text-white hover:bg-red-700 rounded-lg text-sm font-medium transition-colors shadow-sm"
             >
               <AlertCircle size={16} />{t("ticketDetail.escalateToManagement")}
             </button>
@@ -1727,7 +1767,7 @@ export const TicketDetail: React.FC = () => {
                     alert("Reopen requested");
                   }
                 }}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-sm font-medium transition-colors shadow-sm"
+                className="flex items-center gap-2 px-3.5 py-2 whitespace-nowrap bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-sm font-medium transition-colors shadow-sm"
               >
                 <ArrowLeft size={16} />{t("ticketDetail.reopenTicket")}</button>
             )}
@@ -1746,7 +1786,7 @@ export const TicketDetail: React.FC = () => {
                   <button
                     onClick={handleRejectTicket}
                     disabled={rejecting}
-                    className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
+                    className="flex items-center gap-2 px-3.5 py-2 whitespace-nowrap bg-red-600 text-white hover:bg-red-700 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
                   >
                     {rejecting ? (
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
@@ -1760,7 +1800,7 @@ export const TicketDetail: React.FC = () => {
                   <button
                     onClick={handleCloseTicket}
                     disabled={closing}
-                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
+                    className="flex items-center gap-2 px-3.5 py-2 whitespace-nowrap bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
                   >
                     {closing ? (
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
@@ -1779,7 +1819,7 @@ export const TicketDetail: React.FC = () => {
               <button
                 onClick={handleApproveTicket}
                 disabled={approving}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
+                className="flex items-center gap-2 px-3.5 py-2 whitespace-nowrap bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
               >
                 {approving ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
@@ -1796,7 +1836,7 @@ export const TicketDetail: React.FC = () => {
             ) && (
               <button
                 onClick={handleEscalateClick}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-sm font-medium transition-colors shadow-sm"
+                className="flex items-center gap-2 px-3.5 py-2 whitespace-nowrap bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-sm font-medium transition-colors shadow-sm"
               >
                 <Lock size={16} />{t("ticketDetail.internalNote")}</button>
             )}
@@ -1807,7 +1847,7 @@ export const TicketDetail: React.FC = () => {
             ) && (
               <button
                 onClick={() => setShowRemoteModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-sm font-medium transition-colors shadow-sm"
+                className="flex items-center gap-2 px-3.5 py-2 whitespace-nowrap bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-sm font-medium transition-colors shadow-sm"
               >
                 <Video size={16} className="text-blue-600" />Request Remote Check
               </button>
@@ -1819,20 +1859,20 @@ export const TicketDetail: React.FC = () => {
             ) && (
               <button
                 onClick={() => setShowResolveModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg text-sm font-medium transition-colors shadow-sm"
+                className="flex items-center gap-2 px-3.5 py-2 whitespace-nowrap bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg text-sm font-medium transition-colors shadow-sm"
               >
                 <CheckCircle2 size={16} />{t("ticketDetail.resolveTicket")}</button>
             )}
 
           {isAdmin && (
             <>
-              <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-sm font-medium transition-colors">
+              <button className="flex items-center gap-2 px-3.5 py-2 whitespace-nowrap bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg text-sm font-medium transition-colors">
                 <Edit size={16} />{t("ticketDetail.edit")}</button>
               <div className="relative">
                 <button
                   onClick={handleAssignClick}
                   disabled={assigning}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#3B82F6] text-white hover:bg-[#2563eb] rounded-lg text-sm font-medium transition-colors shadow-sm disabled:bg-blue-300"
+                  className="flex items-center gap-2 px-3.5 py-2 whitespace-nowrap bg-[#3B82F6] text-white hover:bg-[#2563eb] rounded-lg text-sm font-medium transition-colors shadow-sm disabled:bg-blue-300"
                 >
                   {assigning ? (
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
@@ -1901,6 +1941,12 @@ export const TicketDetail: React.FC = () => {
             </>
           )}
         </div>
+       </div>
+
+       {/* Row 2: ticket title, on its own line so it never collides with the actions */}
+       <h1 className="text-xl font-semibold text-slate-900 leading-snug line-clamp-2" title={ticket.title || ticket.subject}>
+         {ticket.title || ticket.subject}
+       </h1>
       </div>
 
       {/* Main Content */}
@@ -1910,11 +1956,14 @@ export const TicketDetail: React.FC = () => {
           {/* Card 1: Ticket Info */}
           <div className="bg-white rounded-[10px] border border-slate-200 p-8 shadow-sm">
             <div className="flex flex-wrap items-center gap-2 mb-6">
+              {/* Development tickets have no priority (they follow a requested timeline). */}
+              {ticket.ticket_type !== 'DEVELOPMENT' && (
               <span
                 className={`text-xs font-semibold px-2.5 py-1 rounded-full ${getPriorityColor(ticket.priority?.priority_name || ticket.priority)}`}
               >
                 {t(`priorityLabels.${(ticket.priority?.priority_name || ticket.priority || 'MEDIUM').toUpperCase()}`, { defaultValue: ticket.priority?.priority_name || ticket.priority })} {t("ticketDetail.priority")}
               </span>
+              )}
               <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full">
                 {ticket.product?.product_name ||
                   ticket.product_id ||
@@ -2666,27 +2715,30 @@ export const TicketDetail: React.FC = () => {
                 </div>
                 <div className="text-sm font-semibold text-slate-900">{t("ticketDetail.created")}</div>
                 {editingCreatedDate ? (
-                  <div className="flex items-center gap-2 mt-1.5">
+                  <div className="flex flex-col gap-2 mt-2 min-w-0">
                     <input
                       type="datetime-local"
                       value={newCreatedDate}
                       onChange={(e) => setNewCreatedDate(e.target.value)}
-                      className="text-xs border border-slate-200 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      className="w-full min-w-0 text-xs border border-slate-200 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
                     />
-                    <button
-                      onClick={handleSaveCreatedDate}
-                      disabled={savingCreatedDate}
-                      className="text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-md px-2 py-1 disabled:opacity-50"
-                    >
-                      {savingCreatedDate ? "..." : t("common.save", { defaultValue: "Save" })}
-                    </button>
-                    <button
-                      onClick={() => setEditingCreatedDate(false)}
-                      disabled={savingCreatedDate}
-                      className="text-xs font-semibold text-slate-500 hover:text-slate-700 px-1"
-                    >
-                      {t("common.cancel", { defaultValue: "Cancel" })}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleSaveCreatedDate}
+                        disabled={savingCreatedDate}
+                        className="text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-md px-3 py-1.5 disabled:opacity-50"
+                      >
+                        {savingCreatedDate ? "..." : t("common.save", { defaultValue: "Save" })}
+                      </button>
+                      <button
+                        onClick={() => setEditingCreatedDate(false)}
+                        disabled={savingCreatedDate}
+                        className="text-xs font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-md px-3 py-1.5"
+                      >
+                        {t("common.cancel", { defaultValue: "Cancel" })}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-400">The SLA Due Date will be recalculated from the new created date.</p>
                   </div>
                 ) : (
                   <div className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
