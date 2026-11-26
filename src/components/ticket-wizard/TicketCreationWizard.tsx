@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { getEmailDispatch } from '../../lib/emailTemplates';
+import { getEmailDispatch, sendDispatchEmail } from '../../lib/emailTemplates';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Step0Customer } from './Step0Customer';
@@ -251,7 +251,18 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
           slaDays = parseInt(slaSetting.setting_value);
         }
 
-        slaDueDate.setDate(slaDueDate.getDate() + slaDays);
+        // SLA days are working days (Friday and Saturday are not counted); the
+        // database function is the single source of that rule.
+        const { data: businessDueDate, error: slaRpcError } = await supabase.rpc('add_business_days', {
+          p_start: createdAt.toISOString(),
+          p_days: slaDays,
+        });
+        if (!slaRpcError && businessDueDate) {
+          slaDueDate = new Date(businessDueDate as string);
+        } else {
+          console.error('add_business_days failed, falling back to calendar days:', slaRpcError);
+          slaDueDate.setDate(slaDueDate.getDate() + slaDays);
+        }
       }
 
       // 1. Create Ticket
@@ -390,18 +401,14 @@ export const TicketCreationWizard: React.FC<TicketCreationWizardProps> = ({ onCl
             product_name: selectedProductName,
           };
           const adminEmailFallback = {
-            subject: `New ticket ${ticketNo} has been created by ${user?.email || 'Customer'} - ${title}`,
+            subject: `New ticket ${ticketNo} - ${title}`,
             body: `Dears,\n\nA Portal Ticket has been opened by ${createdByName} , ${customerName} as a ${selectedProductName} .\n\nKindly check the Ticket title ${title} , problem description is ${fullDescription}, the ticket ID no. is ${ticketNo} and edit the ticket severity, other details, in order to send a Ticket Submitted Email to the customer ASAP.\n\nBest Regards,`,
-            defaultRoles: ['admin']
+            defaultRoles: ['support_email', 'support_team_email']
           };
+          // ONE email To the two support mailboxes (support@ and support.team@).
           getEmailDispatch('NEW_TICKET_ADMIN', adminEmailVars, { createdById: user?.id, followerIds: selectedFollowerIds }, adminEmailFallback)
-            .then(({ subject, body, recipientEmails }) => {
-              recipientEmails.forEach(email => {
-                supabase.functions.invoke('send-email', {
-                  body: { to: email, subject, body, ticket_id: ticket.id }
-                }).catch(err => console.error("Error sending email to admin:", err));
-              });
-            });
+            .then(dispatch => sendDispatchEmail(dispatch, ticket.id))
+            .catch(err => console.error("Error sending new ticket email:", err));
         }
 
         // Per the latest business request, the bank's first email now

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
-import { getEmailDispatch } from "../lib/emailTemplates";
+import { getEmailDispatch, sendDispatchEmail } from "../lib/emailTemplates";
 import {
   ArrowLeft,
   Clock,
@@ -32,6 +32,7 @@ import {
 
 import { Ticket } from "../types";
 import { useTranslation } from "react-i18next";
+import { isPastSlaDueDay } from "../lib/sla";
 
 const calculateTimeElapsed = (
   start: string,
@@ -189,7 +190,7 @@ export const TicketDetail: React.FC = () => {
         },
         { assigneeId: ticket?.assigned_to, createdById: ticket?.created_by, followerIds },
         {
-          subject: `Management Escalation - Ticket ${ticket?.ticket_no || ""}`,
+          subject: `Management Escalation - Ticket ${ticket?.ticket_no || ""} - ${ticket?.title || ticket?.subject || ""}`,
           body: `Ticket ${ticket?.ticket_no} has been escalated to management.\n\nNote: ${managementEscalationNote.trim()}`,
           defaultRoles: ["management_escalation"],
         },
@@ -211,7 +212,12 @@ export const TicketDetail: React.FC = () => {
   const openSlaDueDateEditor = () => {
     setSlaDueDateDraft(
       ticket?.sla_due_date
-        ? new Date(ticket.sla_due_date).toISOString().slice(0, 16)
+        ? new Date(
+            new Date(ticket.sla_due_date).getTime() -
+              new Date(ticket.sla_due_date).getTimezoneOffset() * 60000,
+          )
+            .toISOString()
+            .slice(0, 16) // local time, which is what <input type="datetime-local"> expects
         : "",
     );
     setSlaDueDateReason("");
@@ -221,7 +227,10 @@ export const TicketDetail: React.FC = () => {
 
   const handleSaveSlaDueDate = async () => {
     if (!id || !slaDueDateDraft) return;
-    if (!slaDueDateReason.trim()) {
+    // Admins don't need to give a reason; it defaults to "Changed by admin".
+    const effectiveReason =
+      slaDueDateReason.trim() || (isAdmin ? "Changed by admin" : "");
+    if (!effectiveReason) {
       setSlaDueDateError(t("ticketDetail.slaDueDateReasonRequired"));
       return;
     }
@@ -231,14 +240,14 @@ export const TicketDetail: React.FC = () => {
       const { error } = await supabase.rpc("log_sla_due_date_override", {
         p_ticket_id: id,
         p_new_due_date: new Date(slaDueDateDraft).toISOString(),
-        p_reason: slaDueDateReason.trim(),
+        p_reason: effectiveReason,
       });
       if (error) throw error;
 
       setTicket({
         ...ticket,
         sla_due_date: new Date(slaDueDateDraft).toISOString(),
-        sla_due_date_override_reason: slaDueDateReason.trim(),
+        sla_due_date_override_reason: effectiveReason,
       });
       setIsEditingSlaDueDate(false);
     } catch (err: any) {
@@ -257,10 +266,14 @@ export const TicketDetail: React.FC = () => {
 
     setUpdatingPriority(true);
     try {
-      const { error } = await supabase
+      // A database trigger recalculates sla_due_date from the SLA Configuration
+      // when the priority changes, so read the new value back from the row.
+      const { data: updated, error } = await supabase
         .from("tickets")
         .update({ priority_id: newPriorityId })
-        .eq("id", id);
+        .eq("id", id)
+        .select("sla_due_date")
+        .maybeSingle();
 
       if (error) throw error;
 
@@ -268,6 +281,12 @@ export const TicketDetail: React.FC = () => {
       setTicket({
         ...ticket,
         priority_id: newPriorityId,
+        ...(updated?.sla_due_date
+          ? {
+              sla_due_date: updated.sla_due_date,
+              sla_due_date_override_reason: null,
+            }
+          : {}),
         priority: newPriority
           ? { priority_name: newPriority.priority_name }
           : ticket.priority,
@@ -287,8 +306,9 @@ export const TicketDetail: React.FC = () => {
     const due = new Date(ticket.sla_due_date);
     const now = new Date();
 
+    // Overdue only from the day after the due date.
     const isOverdue =
-      now > due &&
+      isPastSlaDueDay(due, now) &&
       !["CLOSED", "RESOLVED", "APPROVED"].includes(
         (ticket.status?.status_code || ticket.status_code || "").toUpperCase(),
       );
@@ -801,7 +821,7 @@ export const TicketDetail: React.FC = () => {
                   { ticket_no: tktNo, subject: ticket?.subject || '', escalation_note: escalationNote },
                   { developerId: selectedDev.id, createdById: ticket?.created_by, followerIds },
                   {
-                    subject: `You have been assigned an escalation for ticket ${tktNo}: ${ticket?.subject || ''}`,
+                    subject: `You have been assigned an escalation for ticket ${tktNo} - ${ticket?.subject || ''}`,
                     body: `You have been assigned an escalation for ticket ${tktNo}: ${ticket?.subject || ''}.\n\nEscalation note: ${escalationNote}`,
                     defaultRoles: ['developer']
                   }
@@ -1174,21 +1194,19 @@ export const TicketDetail: React.FC = () => {
       // Send email to Engineer (and any other configured recipients)
       if (assignedEng?.email) {
         try {
-          const { subject, body, recipientEmails } = await getEmailDispatch(
+          // Email #2: To the assignee, CC the support team mailbox.
+          const engineerDispatch = await getEmailDispatch(
             'TICKET_ASSIGNED_ENGINEER',
             { ticket_no: ticketNo, subject: ticket.subject, engineer_name: assignedEng.full_name || 'Engineer' },
             { assigneeId: engineerId, createdById: ticket.created_by, followerIds },
             {
-              subject: `You have been assigned to ticket ${ticketNo}: ${ticket.subject}`,
+              subject: `You have been assigned to ticket ${ticketNo} - ${ticket.subject}`,
               body: `Hello ${assignedEng.full_name || 'Engineer'},\n\nYou have been assigned to ticket ${ticketNo}.\n\nSubject: ${ticket.subject}\n\nPlease review it in the Support Portal.`,
-              defaultRoles: ['assignee']
+              defaultRoles: ['assignee'],
+              defaultCcRoles: ['support_team_email'],
             }
           );
-          recipientEmails.forEach(email => {
-            supabase.functions.invoke('send-email', {
-              body: { to: email, subject, body, ticket_id: ticket.id }
-            }).catch(err => console.error("Error sending email to engineer:", err));
-          });
+          await sendDispatchEmail(engineerDispatch, ticket.id);
         } catch (emailErr) {
           console.error("Unexpected error invoking send-email for engineer:", emailErr);
         }
@@ -1208,22 +1226,22 @@ export const TicketDetail: React.FC = () => {
           start_date: ticket.created_at ? formatEmailDate(new Date(ticket.created_at)) : '',
           end_date: ticket.sla_due_date ? formatEmailDate(new Date(ticket.sla_due_date)) : '',
           priority: priorityName,
+          assignee_name: assignedEng?.full_name || 'our support team',
         };
-        const { subject, body, recipientEmails } = await getEmailDispatch(
+        // Email #1: To the bank users selected at ticket creation (names the
+        // assignee), CC support@.
+        const customerDispatch = await getEmailDispatch(
           'NEW_TICKET_CUSTOMER',
           customerEmailVars,
           { createdById: ticket.created_by, followerIds },
           {
-            subject: `Your ticket ${ticketNo} has been created`,
-            body: `Dears,\n\nWe received your request ticket number ${ticketNo}.\n\nIt is forwarded to the department in charge who will contact you soon to handle your request.\nPlease refer to the above ticket number for any future communication in relation to this issue.\n\nTickets Details:\n\nThe Ticket title is ${ticket.subject} , And problem description is ${customerEmailVars.description} .\n\n- Priority : ${priorityName}\n- Expected Start Date : ${customerEmailVars.start_date}\n- Expected End Date : ${customerEmailVars.end_date}\n\nYour ticket has been assigned to our support team and is now being worked on.\n\nBest regards,\n\nPio-Tech Support Team`,
+            subject: `Your ticket ${ticketNo} - ${ticket.subject} has been created`,
+            body: `Dears,\n\nWe received your request ticket number ${ticketNo}.\n\nIt is forwarded to the department in charge who will contact you soon to handle your request.\nPlease refer to the above ticket number for any future communication in relation to this issue.\n\nTickets Details:\n\nThe Ticket title is ${ticket.subject} , And problem description is ${customerEmailVars.description} .\n\n- Priority : ${priorityName}\n- Expected Start Date : ${customerEmailVars.start_date}\n- Expected End Date : ${customerEmailVars.end_date}\n\nYour ticket has been assigned to ${customerEmailVars.assignee_name} from our support team and is now being worked on.\n\nBest regards,\n\nPio-Tech Support Team`,
             defaultRoles: ['customer'],
+            defaultCcRoles: ['support_email'],
           }
         );
-        recipientEmails.forEach(email => {
-          supabase.functions.invoke('send-email', {
-            body: { to: email, subject, body, ticket_id: ticket.id }
-          }).catch(err => console.error("Error sending email to customer:", err));
-        });
+        await sendDispatchEmail(customerDispatch, ticket.id);
       } catch (emailErr) {
         console.error("Unexpected error invoking send-email for customer:", emailErr);
       }
@@ -1349,7 +1367,7 @@ export const TicketDetail: React.FC = () => {
                 { ticket_no: tktNo, subject: ticket.subject, resolved_by_name: user?.full_name || 'an engineer' },
                 { createdById: ticket.created_by, assigneeId: ticket.assigned_to, followerIds },
                 {
-                  subject: `Ticket ${tktNo} is pending your approval`,
+                  subject: `Ticket ${tktNo} - ${ticket.subject} is pending your approval`,
                   body: `Ticket ${tktNo} has been resolved by ${user?.full_name || 'an engineer'} and is pending your approval.\n\nSubject: ${ticket.subject}`,
                   defaultRoles: ['admin']
                 }
@@ -1439,7 +1457,7 @@ export const TicketDetail: React.FC = () => {
             { ticket_no: ticketNo, subject: ticket.subject },
             { createdById: ticket.created_by, assigneeId: ticket.assigned_to, followerIds },
             {
-              subject: `Your ticket ${ticketNo} has been closed`,
+              subject: `Your ticket ${ticketNo} - ${ticket.subject} has been closed`,
               body: `Your ticket ${ticketNo} has been resolved and closed by our support team. Please review and approve the resolution at your convenience.\n\nSubject: ${ticket.subject}`,
               defaultRoles: ['customer']
             }
@@ -1517,7 +1535,7 @@ export const TicketDetail: React.FC = () => {
             { ticket_no: ticketNo, subject: ticket.subject },
             { assigneeId: ticket.assigned_to, createdById: ticket.created_by, followerIds },
             {
-              subject: `Your resolution for ticket ${ticketNo} has been approved`,
+              subject: `Your resolution for ticket ${ticketNo} - ${ticket.subject} has been approved`,
               body: `Your resolution for ticket ${ticketNo} has been approved.\n\nSubject: ${ticket.subject}`,
               defaultRoles: ['assignee']
             }
@@ -1607,7 +1625,7 @@ export const TicketDetail: React.FC = () => {
                 { ticket_no: tktNo, subject: ticket.subject },
                 { assigneeId: ticket.assigned_to, createdById: ticket.created_by, followerIds },
                 {
-                  subject: `Your resolution for ticket ${tktNo} was rejected`,
+                  subject: `Your resolution for ticket ${tktNo} - ${ticket.subject} was rejected`,
                   body: `Your resolution for ticket ${tktNo} was rejected and requires further investigation.\n\nSubject: ${ticket.subject}`,
                   defaultRoles: ['assignee']
                 }
@@ -2441,13 +2459,20 @@ export const TicketDetail: React.FC = () => {
                       <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">
                           {t("ticketDetail.slaDueDateReason")}
+                          {isAdmin && (
+                            <span className="text-slate-400 font-normal"> (optional)</span>
+                          )}
                         </label>
                         <textarea
                           value={slaDueDateReason}
                           onChange={(e) => setSlaDueDateReason(e.target.value)}
                           rows={3}
                           className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-teal-500"
-                          placeholder={t("ticketDetail.slaDueDateReasonPlaceholder")}
+                          placeholder={
+                            isAdmin
+                              ? "Changed by admin"
+                              : t("ticketDetail.slaDueDateReasonPlaceholder")
+                          }
                         />
                       </div>
                       {slaDueDateError && (
@@ -2462,7 +2487,7 @@ export const TicketDetail: React.FC = () => {
                         </button>
                         <button
                           onClick={handleSaveSlaDueDate}
-                          disabled={savingSlaDueDate || !slaDueDateDraft || !slaDueDateReason.trim()}
+                          disabled={savingSlaDueDate || !slaDueDateDraft || (!isAdmin && !slaDueDateReason.trim())}
                           className="px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 rounded-lg"
                         >
                           {savingSlaDueDate ? "Saving..." : "Save"}

@@ -17,7 +17,21 @@ async function emailForUserId(userId?: string | null): Promise<string | null> {
   return data || null;
 }
 
-// Turns the admin-selected recipient roles (e.g. ["assignee", "customer", "support_group"])
+// Reads a comma-separated list of addresses from system_settings.
+async function emailsFromSetting(settingKey: string, fallback: string[] = []): Promise<string[]> {
+  const { data: setting } = await supabase
+    .from('system_settings')
+    .select('setting_value')
+    .eq('setting_key', settingKey)
+    .maybeSingle();
+  const list = String(setting?.setting_value || '')
+    .split(',')
+    .map((e: string) => e.trim())
+    .filter(Boolean);
+  return list.length > 0 ? list : fallback;
+}
+
+// Turns the admin-selected recipient roles (e.g. ["assignee", "customer", "support_email"])
 // into a de-duplicated list of real email addresses, using whatever ids are
 // available at the call site. Roles with no matching id/data are silently skipped.
 export async function resolveRecipientEmails(
@@ -39,11 +53,23 @@ export async function resolveRecipientEmails(
         break;
       }
       case 'customer': {
-        const email = await emailForUserId(ctx.createdById);
-        if (email) emails.add(email);
-        // Bank users the admin picked to follow this ticket — added on top of
-        // (not instead of) the ticket creator, since an admin-created ticket's
-        // creator is the admin, not anyone at the bank.
+        // Bank users: the ticket creator when they are a bank user (a ticket an
+        // admin opened on the bank's behalf is created by the admin, who is
+        // not the bank), plus the bank users picked to follow the ticket.
+        if (ctx.createdById) {
+          const { data: creator } = await supabase
+            .from('users')
+            .select('email, customer_id')
+            .eq('id', ctx.createdById)
+            .maybeSingle();
+          if (creator) {
+            if (creator.customer_id && creator.email) emails.add(creator.email);
+          } else {
+            // Row not readable from here — fall back to the plain address lookup.
+            const email = await emailForUserId(ctx.createdById);
+            if (email) emails.add(email);
+          }
+        }
         if (ctx.followerIds && ctx.followerIds.length > 0) {
           const { data: followerUsers } = await supabase
             .from('users')
@@ -65,31 +91,23 @@ export async function resolveRecipientEmails(
       case 'management_escalation': {
         // CEO / Deputy / PS Director / Support Manager aren't system users yet —
         // same fixed-mailbox-list pattern as support_group, just a different setting.
-        const { data: setting } = await supabase
-          .from('system_settings')
-          .select('setting_value')
-          .eq('setting_key', 'management_escalation_recipients')
-          .maybeSingle();
-        (setting?.setting_value || '')
-          .split(',')
-          .map((e: string) => e.trim())
-          .filter(Boolean)
-          .forEach((e: string) => emails.add(e));
+        (await emailsFromSetting('management_escalation_recipients')).forEach(e => emails.add(e));
+        break;
+      }
+      case 'support_email': {
+        // support@ — the individual support mailbox.
+        (await emailsFromSetting('support_email', ['support@pio-tech.com'])).forEach(e => emails.add(e));
+        break;
+      }
+      case 'support_team_email': {
+        // support.team@ — the support team mailbox.
+        (await emailsFromSetting('support_team_email', ['support.team@pio-tech.com'])).forEach(e => emails.add(e));
         break;
       }
       case 'support_group': {
-        // A fixed shared mailbox/alias (e.g. support.team@pio-tech.com), editable
-        // by admins from the Email Templates page — not a per-user lookup.
-        const { data: setting } = await supabase
-          .from('system_settings')
-          .select('setting_value')
-          .eq('setting_key', 'support_group_email')
-          .maybeSingle();
-        (setting?.setting_value || '')
-          .split(',')
-          .map((e: string) => e.trim())
-          .filter(Boolean)
-          .forEach((e: string) => emails.add(e));
+        // Both support mailboxes (the shared list editable from the Email
+        // Templates page) — not a per-user lookup.
+        (await emailsFromSetting('support_group_email')).forEach(e => emails.add(e));
         break;
       }
     }
@@ -98,10 +116,11 @@ export async function resolveRecipientEmails(
   return [...emails];
 }
 
-interface EmailDispatch {
+export interface EmailDispatch {
   subject: string;
   body: string;
-  recipientEmails: string[];
+  recipientEmails: string[]; // To
+  ccEmails: string[];        // CC (never repeats an address already in To)
 }
 
 // One-stop call for a notification trigger: loads the admin-edited template +
@@ -113,12 +132,17 @@ export async function getEmailDispatch(
   triggerKey: string,
   vars: Record<string, string>,
   ctx: RecipientContext,
-  fallback: { subject: string; body: string; defaultRoles: string[] }
+  fallback: { subject: string; body: string; defaultRoles: string[]; defaultCcRoles?: string[] }
 ): Promise<EmailDispatch> {
+  const withoutDuplicates = (to: string[], cc: string[]) => {
+    const toSet = new Set(to.map(e => e.toLowerCase()));
+    return cc.filter(e => !toSet.has(e.toLowerCase()));
+  };
+
   try {
     const { data } = await supabase
       .from('email_templates')
-      .select('subject_template, body_template, recipient_roles')
+      .select('subject_template, body_template, recipient_roles, cc_roles')
       .eq('trigger_key', triggerKey)
       .maybeSingle();
 
@@ -126,21 +150,44 @@ export async function getEmailDispatch(
     // the admin intentionally cleared it to send to no one. Only fall back to the
     // hardcoded default roles when the row itself is missing.
     const roles: string[] = data ? (data.recipient_roles || []) : fallback.defaultRoles;
+    const ccRoles: string[] = data ? (data.cc_roles || []) : (fallback.defaultCcRoles || []);
 
     const recipientEmails = await resolveRecipientEmails(roles, ctx);
+    const ccEmails = withoutDuplicates(recipientEmails, await resolveRecipientEmails(ccRoles, ctx));
 
     if (!data) {
-      return { subject: fallback.subject, body: fallback.body, recipientEmails };
+      return { subject: fallback.subject, body: fallback.body, recipientEmails, ccEmails };
     }
 
     return {
       subject: fillTemplate(data.subject_template, vars),
       body: fillTemplate(data.body_template, vars),
       recipientEmails,
+      ccEmails,
     };
   } catch (err) {
     console.error(`Failed to load email template for ${triggerKey}:`, err);
     const recipientEmails = await resolveRecipientEmails(fallback.defaultRoles, ctx);
-    return { subject: fallback.subject, body: fallback.body, recipientEmails };
+    const ccEmails = withoutDuplicates(recipientEmails, await resolveRecipientEmails(fallback.defaultCcRoles || [], ctx));
+    return { subject: fallback.subject, body: fallback.body, recipientEmails, ccEmails };
   }
+}
+
+// Sends a dispatch as ONE email (all To recipients on the To line, CC on CC).
+// Nothing is sent when there is no To recipient.
+export async function sendDispatchEmail(dispatch: EmailDispatch, ticketId?: string): Promise<void> {
+  if (dispatch.recipientEmails.length === 0) {
+    console.warn(`Email "${dispatch.subject}" has no To recipients; not sent.`);
+    return;
+  }
+  const { error } = await supabase.functions.invoke('send-email', {
+    body: {
+      to: dispatch.recipientEmails,
+      cc: dispatch.ccEmails,
+      subject: dispatch.subject,
+      body: dispatch.body,
+      ticket_id: ticketId,
+    },
+  });
+  if (error) console.error(`Error sending email "${dispatch.subject}":`, error);
 }

@@ -10,6 +10,7 @@ interface EmailTemplateRow {
   available_variables: { key: string; label: string }[];
   available_recipients: { key: string; label: string }[];
   recipient_roles: string[];
+  cc_roles: string[];
   subject_template: string;
   body_template: string;
 }
@@ -21,6 +22,7 @@ export const EmailTemplates: React.FC = () => {
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [recipientRoles, setRecipientRoles] = useState<string[]>([]);
+  const [ccRoles, setCcRoles] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sendingTest, setSendingTest] = useState(false);
@@ -51,6 +53,7 @@ export const EmailTemplates: React.FC = () => {
           setSubject(data[0].subject_template);
           setBody(data[0].body_template);
           setRecipientRoles(data[0].recipient_roles || []);
+          setCcRoles(data[0].cc_roles || []);
         }
       }
       if (settingRow?.setting_value != null) setSupportGroupEmail(settingRow.setting_value);
@@ -111,11 +114,18 @@ export const EmailTemplates: React.FC = () => {
     setSubject(tpl.subject_template);
     setBody(tpl.body_template);
     setRecipientRoles(tpl.recipient_roles || []);
+    setCcRoles(tpl.cc_roles || []);
     setMessage(null);
   };
 
   const toggleRecipientRole = (key: string) => {
     setRecipientRoles(prev =>
+      prev.includes(key) ? prev.filter(r => r !== key) : [...prev, key]
+    );
+  };
+
+  const toggleCcRole = (key: string) => {
+    setCcRoles(prev =>
       prev.includes(key) ? prev.filter(r => r !== key) : [...prev, key]
     );
   };
@@ -131,6 +141,7 @@ export const EmailTemplates: React.FC = () => {
           subject_template: subject,
           body_template: body,
           recipient_roles: recipientRoles,
+          cc_roles: ccRoles,
           updated_at: new Date().toISOString()
         })
         .eq('trigger_key', selectedTemplate.trigger_key);
@@ -138,7 +149,7 @@ export const EmailTemplates: React.FC = () => {
 
       setTemplates(prev => prev.map(t =>
         t.trigger_key === selectedTemplate.trigger_key
-          ? { ...t, subject_template: subject, body_template: body, recipient_roles: recipientRoles }
+          ? { ...t, subject_template: subject, body_template: body, recipient_roles: recipientRoles, cc_roles: ccRoles }
           : t
       ));
       setMessage({ text: 'Template saved successfully', type: 'success' });
@@ -342,7 +353,33 @@ export const EmailTemplates: React.FC = () => {
                 {recipientRoles.length === 0 && (
                   <p className="text-xs text-amber-600 mt-1.5">No recipients selected — this notification won't be sent to anyone.</p>
                 )}
+                <p className="text-xs text-slate-400 mt-1.5">Everyone selected here is on the same email's To line (one email, not one per person).</p>
               </div>
+
+              {/* CC */}
+              {selectedTemplate.available_recipients.length > 0 && (
+                <div>
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Users size={13} /> CC
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    {selectedTemplate.available_recipients.map(r => (
+                      <label
+                        key={r.key}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 cursor-pointer hover:bg-slate-100 transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={ccRoles.includes(r.key)}
+                          onChange={() => toggleCcRole(r.key)}
+                          className="rounded border-slate-300 text-[#f97316] focus:ring-[#f97316]"
+                        />
+                        {r.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Variable chips */}
               <div>

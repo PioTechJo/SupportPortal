@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { Tenant } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { Ticket, Clock, ShieldCheck, Users as UsersIcon, AlertTriangle, Zap } from 'lucide-react';
+import { isPastSlaDueDay } from '../../lib/sla';
 
 interface OrganizationOverviewTabProps {
   organization: Tenant;
@@ -45,7 +46,7 @@ export const OrganizationOverviewTab: React.FC<OrganizationOverviewTabProps> = (
             const code = t.status?.status_code?.toUpperCase();
             if (code !== 'CLOSED' && code !== 'APPROVED' && code !== 'RESOLVED_PENDING_APPROVAL') {
               openT++;
-              if (t.sla_due_date && new Date(t.sla_due_date) < now) {
+              if (isPastSlaDueDay(t.sla_due_date, now)) {
                 overdueT++;
               }
             }

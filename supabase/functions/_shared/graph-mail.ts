@@ -5,7 +5,10 @@ export interface EmailAttachment {
 }
 
 export interface SendEmailParams {
-  to: string;
+  // One address or several; all are put on the To line of a single message.
+  to: string | string[];
+  // Optional CC recipients (same message).
+  cc?: string[];
   subject: string;
   html: string;
   attachments?: EmailAttachment[];
@@ -55,6 +58,11 @@ export async function sendEmail(params: SendEmailParams): Promise<void> {
 
   const token = await getAccessToken();
 
+  const toList = Array.isArray(params.to) ? params.to : [params.to];
+  const toSet = new Set(toList.map((a) => a.toLowerCase()));
+  // An address that is already on the To line is not repeated on CC.
+  const ccList = (params.cc ?? []).filter((a) => !toSet.has(a.toLowerCase()));
+
   const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}/sendMail`, {
     method: "POST",
     headers: {
@@ -65,7 +73,8 @@ export async function sendEmail(params: SendEmailParams): Promise<void> {
       message: {
         subject: params.subject,
         body: { contentType: "HTML", content: params.html },
-        toRecipients: [{ emailAddress: { address: params.to } }],
+        toRecipients: toList.map((address) => ({ emailAddress: { address } })),
+        ccRecipients: ccList.map((address) => ({ emailAddress: { address } })),
         attachments: (params.attachments ?? []).map((a) => ({
           "@odata.type": "#microsoft.graph.fileAttachment",
           name: a.name,

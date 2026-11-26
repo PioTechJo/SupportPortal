@@ -7,6 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const EMAIL_RE = /^[^\s@,;<>"]+@[^\s@,;<>"]+\.[^\s@,;<>"]+$/;
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
@@ -14,10 +16,23 @@ serve(async (req) => {
   }
 
   try {
-    const { to, subject, body, ticket_id } = await req.json();
+    // `to` is one address or a list; `cc` is an optional list. All recipients
+    // share ONE message (one To line, one CC line).
+    const { to, cc, subject, body, ticket_id } = await req.json();
 
-    if (!to || !subject || !body) {
+    const toList: string[] = (Array.isArray(to) ? to : [to])
+      .map((e: any) => String(e ?? "").trim())
+      .filter(Boolean);
+    const ccList: string[] = (Array.isArray(cc) ? cc : [])
+      .map((e: any) => String(e ?? "").trim())
+      .filter(Boolean);
+
+    if (toList.length === 0 || !subject || !body) {
       throw new Error("Missing required parameters: to, subject, body");
+    }
+    const invalid = [...toList, ...ccList].filter((e) => !EMAIL_RE.test(e));
+    if (invalid.length > 0) {
+      throw new Error(`Invalid email address: ${invalid.join(", ")}`);
     }
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -29,7 +44,7 @@ serve(async (req) => {
           <h2 style="color: #1e293b; margin: 0;">Pio-Tech Support Portal</h2>
         </div>
         <div style="padding: 24px; line-height: 1.6; font-size: 15px;">
-          ${body.replace(/\n/g, '<br>')}
+          ${String(body).replace(/\n/g, '<br>')}
         </div>
         <div style="background-color: #f1f5f9; padding: 15px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0;">
           This is an automated notification from the Pio-Tech Support Portal.<br>
@@ -42,23 +57,28 @@ serve(async (req) => {
     let errorMessage = null;
 
     try {
-      await sendEmail({ to, subject, html: htmlBody });
+      await sendEmail({ to: toList, cc: ccList, subject, html: htmlBody });
     } catch (err: any) {
       emailStatus = 'failed';
       errorMessage = err.message;
     }
 
-    // Try logging to database
+    // Try logging to database: one row per recipient (To and CC)
     if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
       try {
         const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-        await supabase.from('email_logs').insert({
-          recipient_email: to,
+        const toSet = new Set(toList.map((a) => a.toLowerCase()));
+        const rows = [
+          ...toList,
+          ...ccList.filter((a) => !toSet.has(a.toLowerCase())),
+        ].map((email) => ({
+          recipient_email: email,
           subject: subject,
           status: emailStatus,
           error_message: errorMessage,
-          related_ticket_id: ticket_id || null
-        });
+          related_ticket_id: ticket_id || null,
+        }));
+        await supabase.from('email_logs').insert(rows);
       } catch (logErr) {
         console.error("Failed to log email to database:", logErr);
       }
@@ -71,7 +91,7 @@ serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ success: true, message: "Email sent successfully via Power Automate" }), {
+    return new Response(JSON.stringify({ success: true, message: "Email sent successfully" }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
