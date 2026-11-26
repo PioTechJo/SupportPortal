@@ -17,6 +17,8 @@ async function emailForUserId(userId?: string | null): Promise<string | null> {
   return data || null;
 }
 
+const BANK_ROLE_CODES = ['BANK_USER', 'BANK_MANAGER', 'BANK_ADMIN'];
+
 // Reads a comma-separated list of addresses from system_settings.
 async function emailsFromSetting(settingKey: string, fallback: string[] = []): Promise<string[]> {
   const { data: setting } = await supabase
@@ -59,11 +61,15 @@ export async function resolveRecipientEmails(
         if (ctx.createdById) {
           const { data: creator } = await supabase
             .from('users')
-            .select('email, customer_id')
+            .select('email, roles:roles!users_role_id_fkey(role_code)')
             .eq('id', ctx.createdById)
             .maybeSingle();
           if (creator) {
-            if (creator.customer_id && creator.email) emails.add(creator.email);
+            // Internal staff (e.g. the admin, who also belongs to the
+            // "Pio-Tech Internal" customer) are never "the bank".
+            const roleRow: any = Array.isArray((creator as any).roles) ? (creator as any).roles[0] : (creator as any).roles;
+            const roleCode = String(roleRow?.role_code || '').toUpperCase();
+            if (BANK_ROLE_CODES.includes(roleCode) && creator.email) emails.add(creator.email);
           } else {
             // Row not readable from here — fall back to the plain address lookup.
             const email = await emailForUserId(ctx.createdById);

@@ -1233,11 +1233,11 @@ export const TicketDetail: React.FC = () => {
         const customerDispatch = await getEmailDispatch(
           'NEW_TICKET_CUSTOMER',
           customerEmailVars,
-          { createdById: ticket.created_by, followerIds },
+          { createdById: ticket.created_by, followerIds, assigneeId: engineerId },
           {
             subject: `Your ticket ${ticketNo} - ${ticket.subject} has been created`,
             body: `Dears,\n\nWe received your request ticket number ${ticketNo}.\n\nIt is forwarded to the department in charge who will contact you soon to handle your request.\nPlease refer to the above ticket number for any future communication in relation to this issue.\n\nTickets Details:\n\nThe Ticket title is ${ticket.subject} , And problem description is ${customerEmailVars.description} .\n\n- Priority : ${priorityName}\n- Expected Start Date : ${customerEmailVars.start_date}\n- Expected End Date : ${customerEmailVars.end_date}\n\nYour ticket has been assigned to ${customerEmailVars.assignee_name} from our support team and is now being worked on.\n\nBest regards,\n\nPio-Tech Support Team`,
-            defaultRoles: ['customer'],
+            defaultRoles: ['customer', 'assignee'],
             defaultCcRoles: ['support_email'],
           }
         );
